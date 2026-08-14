@@ -1,0 +1,201 @@
+/* ============================================================
+   styles.css — Custom layer atop Tailwind (sidebar, glass, etc.)
+   The Tailwind CDN generates utilities JIT at runtime; this file
+   adds: fractional sizes it can't generate, keyframe animations
+   that depend on scoped class names, and feature-specific styles.
+   ============================================================ */
+
+/* Fractional size utilities (Tailwind CDN does not auto-generate these) */
+.w-4\.5 { width: 1.125rem; }
+.h-4\.5 { height: 1.125rem; }
+.w-3\.5 { width: 0.875rem; }
+.h-3\.5 { height: 0.875rem; }
+
+html {
+  -webkit-text-size-adjust: 100%;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+body {
+  scroll-behavior: smooth;
+  /* Subtle radial backdrop in dark mode for depth */
+}
+.dark body {
+  background-image: radial-gradient(circle at 0% 0%, rgba(14,165,233,0.06), transparent 40%),
+                    radial-gradient(circle at 100% 100%, rgba(139,92,246,0.05), transparent 40%);
+  background-attachment: fixed;
+}
+
+/* ---- Scrollbar (subtle) ---- */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.35);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.6);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+.dark *::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  background-clip: padding-box;
+}
+.dark *::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.55);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+
+/* ---- Sidebar polish ---- */
+#sidebar {
+  /* Contain internal layout against edge bleed */
+  isolation: isolate;
+}
+.nav-item {
+  /* Ensure the rail stripe sits flush */
+  overflow: hidden;
+}
+.nav-item .nav-count {
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+/* ---- Modal pop / backdrop ---- */
+.modal-pop {
+  animation: modal-pop 0.18s ease-out;
+}
+.modal-backdrop {
+  animation: backdrop-fade 0.15s ease-out;
+}
+.modal-out {
+  animation: modal-out 0.15s ease-in forwards;
+}
+@keyframes modal-pop {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+@keyframes modal-out {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(0.98); }
+}
+@keyframes backdrop-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ---- Toast pop ---- */
+.toast-pop {
+  animation: toast-in 0.18s ease-out;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ---- Line clamp ---- */
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ---- Chat image hover hint ---- */
+img[class*="cursor-zoom-in"] {
+  transition: transform 0.15s ease;
+}
+img[class*="cursor-zoom-in"]:hover {
+  transform: scale(1.02);
+}
+
+/* ---- FAB glow ---- */
+#fab {
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+#fab:hover {
+  filter: brightness(1.08);
+}
+
+/* ---- Pulse dot (live indicator) ---- */
+.animate-pulse-dot {
+  animation: pulseDot 1.6s ease-in-out infinite;
+}
+@keyframes pulseDot {
+  0%, 100% { opacity: 0.4; transform: scale(0.9); }
+  50%      { opacity: 1;   transform: scale(1.1); }
+}
+
+/* ---- Fade-up entrance ---- */
+.animate-fade-up {
+  animation: fadeUp 0.35s ease-out both;
+}
+@keyframes fadeUp {
+  0%   { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+/* ---- Selection colour ---- */
+::selection {
+  background: rgba(14, 165, 233, 0.25);
+  color: inherit;
+}
+.dark ::selection {
+  background: rgba(14, 165, 233, 0.4);
+}
+
+/* ---- Focus-visible (keyboard) ---- */
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+a:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid #0ea5e9;
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* ---- Inputs placeholder ---- */
+input::placeholder, textarea::placeholder {
+  color: #94a3b8;
+  opacity: 1;
+}
+.dark input::placeholder, .dark textarea::placeholder {
+  color: #64748b;
+}
+
+/* ---- Hero card backdrop (used by feature empty states) ---- */
+.hero-soft  { background-image: linear-gradient(135deg, #f0f9ff 0%, #ede9fe 100%); }
+.hero-chat  { background-image: linear-gradient(135deg, #f5f3ff 0%, #fce7f3 100%); }
+.hero-quiz  { background-image: linear-gradient(135deg, #ecfdf5 0%, #ccfbf1 100%); }
+.dark .hero-soft { background-image: linear-gradient(135deg, rgba(14,165,233,0.10) 0%, rgba(139,92,246,0.10) 100%); }
+.dark .hero-chat { background-image: linear-gradient(135deg, rgba(139,92,246,0.12) 0%, rgba(236,72,153,0.10) 100%); }
+.dark .hero-quiz { background-image: linear-gradient(135deg, rgba(16,185,129,0.12) 0%, rgba(20,184,166,0.10) 100%); }
+
+/* ---- Sidebar background gradient accent (very subtle, only in dark) ---- */
+.dark #sidebar {
+  background-image: linear-gradient(180deg, rgba(14,165,233,0.04) 0%, transparent 30%);
+}
+
+/* ---- Empty-state CTA button hover lift ---- */
+.cta-lift {
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+.cta-lift:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
+
+/* ---- Registration landing: gradient panel ---- */
+.landing-grad {
+  background-image:
+    radial-gradient(circle at 20% 20%, rgba(255,255,255,0.18), transparent 40%),
+    linear-gradient(135deg, #0ea5e9 0%, #6366f1 50%, #8b5cf6 100%);
+}
+
+/* ---- Drawer transition (matches sidebar transform) ---- */
+#sidebar { will-change: transform; }
