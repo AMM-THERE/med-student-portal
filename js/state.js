@@ -9,6 +9,7 @@
 
   const state = {
     currentUser: null,
+    activeTab: 'lectures', // التبويب الافتراضي
     users: [],
     messages: [],
     lectures: [],
@@ -59,6 +60,18 @@
     return () => LISTENERS.delete(fn);
   }
 
+  // --- Tab & Year Navigation Helpers ---
+  function setTab(tab) {
+    if (!tab) return;
+    state.activeTab = tab;
+    notify({ type: 'tab', tab });
+  }
+
+  function setViewingYear(year) {
+    state.viewingYear = year;
+    notify({ type: 'year', year });
+  }
+
   // --- Realtime Subscription for Messages ---
   function initRealtime() {
     if (!window.db) return;
@@ -88,6 +101,10 @@
   // --- Sync Initial Data from Supabase ---
   async function loadFromDatabase() {
     state.currentUser = getSavedUser();
+    if (state.currentUser && state.currentUser.year) {
+      state.viewingYear = state.currentUser.year;
+    }
+    
     if (typeof STORAGE.loadPrefs === 'function') {
       state.prefs = STORAGE.loadPrefs();
     }
@@ -192,6 +209,8 @@
   global.MP_STATE = {
     state,
     subscribe,
+    setTab,
+    setViewingYear,
     addUser,
     loginAs,
     logout,
