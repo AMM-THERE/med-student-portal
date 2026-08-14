@@ -200,6 +200,21 @@
   <!-- SheetJS for Excel/CSV parsing (admin quiz import) -->
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 
+  <!-- Custom Scroll & Overflow Fix for Modals -->
+  <style>
+    #modal-root > div {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      padding: 1rem !important;
+    }
+    #modal-root > div > div, 
+    #modal-root form {
+      max-height: 85vh !important;
+      overflow-y: auto !important;
+    }
+  </style>
+
   <link rel="stylesheet" href="css/styles.css" />
 </head>
 

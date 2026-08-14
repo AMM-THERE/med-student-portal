@@ -44,7 +44,7 @@
 
       const hideHeader = this.opts.hideHeader;
       const headerHTML = hideHeader ? '' : `
-          <div class="flex items-center justify-between px-5 py-3 border-b border-slate-200 dark:border-slate-800">
+          <div class="flex items-center justify-between px-5 py-3 border-b border-slate-200 dark:border-slate-800 shrink-0">
             <h2 class="text-base sm:text-lg font-semibold text-slate-900 dark:text-slate-100">${ESC(this.opts.title || '')}</h2>
             <button type="button" data-modal-close class="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:hover:text-slate-100 dark:hover:bg-slate-800" aria-label="Close">
               ${global.MP_UI.icon('x', 'w-5 h-5')}
@@ -53,9 +53,9 @@
       `;
 
       el.innerHTML = `
-        <div class="relative w-full ${sizeClass} bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden modal-pop" role="dialog" aria-modal="true">
+        <div class="relative w-full ${sizeClass} max-h-[90vh] flex flex-col bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden modal-pop" role="dialog" aria-modal="true">
           ${headerHTML}
-          <div data-modal-body class="${hideHeader ? '' : 'p-5'} max-h-[85vh] overflow-y-auto">${this.opts.content || ''}</div>
+          <div data-modal-body class="${hideHeader ? '' : 'p-5'} flex-1 overflow-y-auto min-h-0">${this.opts.content || ''}</div>
           ${hideHeader ? `<button type="button" data-modal-close class="absolute top-3 right-3 z-10 p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:hover:text-slate-100 dark:hover:bg-slate-800" aria-label="Close">${global.MP_UI.icon('x', 'w-5 h-5')}</button>` : ''}
         </div>`;
       root.appendChild(el);
