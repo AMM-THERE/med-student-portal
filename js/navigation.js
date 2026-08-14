@@ -16,25 +16,23 @@
   function el(id) { return document.getElementById(id); }
 
   function getTabDefs() {
-    const CFG = getCFG();
-    const tabs = CFG.TABS || { LECTURES: 'lectures', CHAT: 'chat', QUIZ: 'quiz' };
     return [
       {
-        id: tabs.LECTURES,
+        id: 'lectures',
         label: 'Lectures',
         desc: 'Resources & Drive links',
         icon: 'book',
         gradient: 'from-brand-500 to-brand-700'
       },
       {
-        id: tabs.CHAT,
+        id: 'chat',
         label: 'Community',
         desc: 'Chat with your batch',
         icon: 'chat',
         gradient: 'from-accent-500 to-accent-700'
       },
       {
-        id: tabs.QUIZ,
+        id: 'quiz',
         label: 'Quiz',
         desc: 'Test yourself with MCQs',
         icon: 'check',
@@ -46,21 +44,18 @@
   function counts() {
     const STATE = getSTATE();
     const st = STATE.state || {};
-    const CFG = getCFG();
-    const tabs = CFG.TABS || { LECTURES: 'lectures', CHAT: 'chat', QUIZ: 'quiz' };
-
     return {
-      [tabs.LECTURES]: (st.lectures || []).length,
-      [tabs.CHAT]:     (st.messages || []).length,
-      [tabs.QUIZ]:     (st.quizzes || []).length
+      lectures: (st.lectures || []).length,
+      chat:     (st.messages || []).length,
+      quiz:     (st.quizzes || []).length
     };
   }
 
   function currentTitle() {
     const STATE = getSTATE();
     const st = STATE.state || {};
-    const curTab = st.currentTab || st.activeTab || 'lectures';
-    const tab = getTabDefs().find(t => t.id === curTab);
+    const curTab = (st.currentTab || st.activeTab || 'lectures').toLowerCase();
+    const tab = getTabDefs().find(t => t.id === curTab || (t.id === 'chat' && curTab === 'community'));
     return tab ? tab.label : 'MedPortal';
   }
 
@@ -75,7 +70,10 @@
     if (!root) return;
     if (!u) { root.innerHTML = ''; return; }
 
-    const cur = STATE.state.currentTab || STATE.state.activeTab || 'lectures';
+    let cur = (STATE.state.currentTab || STATE.state.activeTab || 'lectures').toLowerCase();
+    if (cur === 'community') cur = 'chat';
+    if (cur === 'quizzes') cur = 'quiz';
+
     const c = counts();
 
     root.innerHTML = `
@@ -141,7 +139,7 @@
 
     root.querySelectorAll('[data-nav]').forEach(btn => {
       btn.addEventListener('click', () => {
-        STATE.setTab(btn.dataset.nav);
+        if (STATE.setTab) STATE.setTab(btn.dataset.nav);
         closeDrawer();
       });
     });
@@ -166,7 +164,10 @@
     if (!root) return;
     if (!u) { root.innerHTML = ''; return; }
 
-    const curTab = STATE.state.currentTab || STATE.state.activeTab || 'lectures';
+    let curTab = (STATE.state.currentTab || STATE.state.activeTab || 'lectures').toLowerCase();
+    if (curTab === 'community') curTab = 'chat';
+    if (curTab === 'quizzes') curTab = 'quiz';
+
     const title = currentTitle();
     const tab   = getTabDefs().find(t => t.id === curTab);
     const grad  = tab ? tab.gradient : 'from-brand-500 to-brand-700';
@@ -225,21 +226,20 @@
     const UI = getUI();
     const LEC = getLEC();
     const QUIZ = getQUIZ();
-    const CFG = getCFG();
 
     const u = STATE.state ? STATE.state.currentUser : null;
     if (!u || !u.isAdmin) { slot.innerHTML = ''; return; }
 
-    const tab = STATE.state.currentTab || STATE.state.activeTab;
-    const tabs = CFG.TABS || { LECTURES: 'lectures', QUIZ: 'quiz' };
+    let tab = (STATE.state.currentTab || STATE.state.activeTab || 'lectures').toLowerCase();
+    if (tab === 'community') tab = 'chat';
 
-    if (tab === tabs.LECTURES) {
+    if (tab === 'lectures') {
       slot.innerHTML = `
         <button id="fab" class="w-14 h-14 rounded-full bg-brand-grad hover:brightness-110 text-white shadow-glow-l flex items-center justify-center transition active:scale-95 animate-fade-up" title="Add lecture">
           ${UI.icon ? UI.icon('plus','w-6 h-6') : '+'}
         </button>`;
       if (LEC.openAddLecture) el('fab').addEventListener('click', () => LEC.openAddLecture());
-    } else if (tab === tabs.QUIZ) {
+    } else if (tab === 'quiz') {
       slot.innerHTML = `
         <button id="fab" class="w-14 h-14 rounded-full bg-success-grad hover:brightness-110 text-white shadow-glow-l flex items-center justify-center transition active:scale-95 animate-fade-up" title="Upload quiz">
           ${UI.icon ? UI.icon('plus','w-6 h-6') : '+'}
@@ -257,14 +257,16 @@
     const LEC = getLEC();
     const CHAT = getCHAT();
     const QUIZ = getQUIZ();
-    const CFG = getCFG();
 
-    const tab = STATE.state ? (STATE.state.currentTab || STATE.state.activeTab) : 'lectures';
-    const tabs = CFG.TABS || { LECTURES: 'lectures', CHAT: 'chat', QUIZ: 'quiz' };
+    let tab = (STATE.state ? (STATE.state.currentTab || STATE.state.activeTab) : 'lectures').toLowerCase();
 
-    if (tab === tabs.LECTURES && LEC.render) LEC.render();
-    else if (tab === tabs.CHAT && CHAT.render) CHAT.render();
-    else if (tab === tabs.QUIZ && QUIZ.render) QUIZ.render();
+    if ((tab === 'lectures' || tab === 'lecture') && LEC.render) {
+      LEC.render();
+    } else if ((tab === 'chat' || tab === 'community') && CHAT.render) {
+      CHAT.render();
+    } else if ((tab === 'quiz' || tab === 'quizzes') && QUIZ.render) {
+      QUIZ.render();
+    }
   }
 
   function renderAll() {

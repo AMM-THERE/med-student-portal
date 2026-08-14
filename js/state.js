@@ -9,7 +9,8 @@
 
   const state = {
     currentUser: null,
-    activeTab: 'lectures', // التبويب الافتراضي
+    currentTab: 'lectures',
+    activeTab: 'lectures',
     users: [],
     messages: [],
     lectures: [],
@@ -20,7 +21,6 @@
     prefs: { theme: 'system', defaultAnonymous: false }
   };
 
-  // --- Safe Session Storage Helpers ---
   function getSavedUser() {
     try {
       if (typeof STORAGE.loadSession === 'function') return STORAGE.loadSession();
@@ -60,11 +60,20 @@
     return () => LISTENERS.delete(fn);
   }
 
-  // --- Tab & Year Navigation Helpers ---
   function setTab(tab) {
     if (!tab) return;
-    state.activeTab = tab;
-    notify({ type: 'tab', tab });
+    let normalizedTab = tab.toLowerCase();
+    if (normalizedTab === 'community') normalizedTab = 'chat';
+    if (normalizedTab === 'quizzes') normalizedTab = 'quiz';
+
+    state.currentTab = normalizedTab;
+    state.activeTab = normalizedTab;
+    notify({ type: 'tab', tab: normalizedTab });
+
+    // Force UI re-render on tab switch
+    if (global.MP_NAV && typeof global.MP_NAV.renderAll === 'function') {
+      global.MP_NAV.renderAll();
+    }
   }
 
   function setViewingYear(year) {
@@ -72,39 +81,12 @@
     notify({ type: 'year', year });
   }
 
-  // --- Realtime Subscription for Messages ---
-  function initRealtime() {
-    if (!window.db) return;
-
-    window.db
-      .channel('public:messages')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
-        const newMsg = payload.new;
-        if (!state.messages.some(m => m.id === newMsg.id)) {
-          state.messages.push({
-            id: newMsg.id,
-            authorId: newMsg.author_id,
-            text: newMsg.text,
-            imageBase64: newMsg.image_base64,
-            fileData: newMsg.file_data,
-            replyTo: newMsg.reply_to,
-            reactions: newMsg.reactions || {},
-            anonymous: newMsg.anonymous,
-            createdAt: Number(newMsg.created_at)
-          });
-          notify({ type: 'messages' });
-        }
-      })
-      .subscribe();
-  }
-
-  // --- Sync Initial Data from Supabase ---
   async function loadFromDatabase() {
     state.currentUser = getSavedUser();
     if (state.currentUser && state.currentUser.year) {
       state.viewingYear = state.currentUser.year;
     }
-    
+
     if (typeof STORAGE.loadPrefs === 'function') {
       state.prefs = STORAGE.loadPrefs();
     }
@@ -112,7 +94,6 @@
     if (!window.db) return;
 
     try {
-      // 1. جلب المستخدمين
       const { data: usersData } = await window.db.from('users').select('*');
       if (usersData) {
         state.users = usersData.map(u => ({
@@ -128,7 +109,6 @@
         }));
       }
 
-      // 2. جلب الرسائل
       const { data: msgData } = await window.db.from('messages').select('*').order('created_at', { ascending: true });
       if (msgData) {
         state.messages = msgData.map(m => ({
@@ -146,75 +126,17 @@
 
       notify({ type: 'init' });
     } catch (err) {
-      console.error('Error fetching data from Supabase:', err);
+      console.error('Error fetching data:', err);
     }
   }
 
-  // --- User Operations ---
-  async function addUser(user) {
-    state.users.push(user);
-    notify({ type: 'users' });
-
-    if (window.db) {
-      await window.db.from('users').insert([{
-        id: user.id,
-        full_name: user.fullName,
-        username: user.username,
-        email: user.email,
-        academic_id: user.academicId,
-        academic_year: user.year,
-        is_admin: user.isAdmin,
-        role: user.role
-      }]);
-    }
-  }
-
-  function loginAs(user) {
-    state.currentUser = user;
-    state.viewingYear = user.year;
-    saveUserSession(user);
-    notify({ type: 'auth' });
-  }
-
-  function logout() {
-    state.currentUser = null;
-    clearUserSession();
-    notify({ type: 'auth' });
-  }
-
-  // --- Message Operations ---
-  async function addMessage(msg) {
-    state.messages.push(msg);
-    notify({ type: 'messages' });
-
-    if (window.db) {
-      await window.db.from('messages').insert([{
-        id: msg.id,
-        author_id: msg.authorId,
-        text: msg.text || '',
-        image_base64: msg.imageBase64 || null,
-        file_data: msg.fileData || null,
-        reply_to: msg.replyTo || null,
-        reactions: msg.reactions || {},
-        anonymous: !!msg.anonymous,
-        created_at: msg.createdAt
-      }]);
-    }
-  }
-
-  // Auto initialize on load
   loadFromDatabase();
-  initRealtime();
 
   global.MP_STATE = {
     state,
     subscribe,
     setTab,
     setViewingYear,
-    addUser,
-    loginAs,
-    logout,
-    addMessage,
     loadFromDatabase
   };
 
