@@ -1,5 +1,5 @@
 /* ============================================================
-   state.js — Reactive Application State synced with Supabase
+   state.js — Reactive Application State synced with Supabase Realtime
    ============================================================ */
 (function (global) {
   'use strict';
@@ -32,23 +32,6 @@
     }
   }
 
-  function saveUserSession(user) {
-    try {
-      if (typeof STORAGE.saveSession === 'function') return STORAGE.saveSession(user);
-      if (typeof STORAGE.saveUser === 'function') return STORAGE.saveUser(user);
-      localStorage.setItem('mp_user', JSON.stringify(user));
-    } catch (e) {}
-  }
-
-  function clearUserSession() {
-    try {
-      if (typeof STORAGE.clearSession === 'function') return STORAGE.clearSession();
-      if (typeof STORAGE.clearUser === 'function') return STORAGE.clearUser();
-      localStorage.removeItem('mp_user');
-      localStorage.removeItem('medportal_user');
-    } catch (e) {}
-  }
-
   function notify(changes) {
     LISTENERS.forEach(fn => {
       try { fn(state, changes); } catch (e) { console.error('Listener err:', e); }
@@ -75,14 +58,13 @@
     }
   }
 
-  function setViewingYear(year) {
-    state.viewingYear = year;
-    notify({ type: 'year', year });
-  }
-
   async function addMessage(msg) {
-    state.messages.push(msg);
-    notify({ type: 'messages' });
+    // Local optimistic update
+    const exists = state.messages.some(m => m.id === msg.id);
+    if (!exists) {
+      state.messages.push(msg);
+      notify({ type: 'messages' });
+    }
 
     if (window.db) {
       try {
@@ -93,7 +75,7 @@
           image_base64: msg.imageBase64 || null,
           file_data: msg.fileData || null,
           reply_to: msg.replyTo || null,
-          reactions: msg.reactions || {},
+          is_pinned: !!msg.isPinned,
           anonymous: !!msg.anonymous,
           created_at: msg.createdAt
         }]);
@@ -103,15 +85,65 @@
     }
   }
 
+  async function togglePinMessage(msgId) {
+    const msg = state.messages.find(m => m.id === msgId);
+    if (!msg) return;
+    msg.isPinned = !msg.isPinned;
+    notify({ type: 'messages' });
+
+    if (window.db) {
+      try {
+        await window.db.from('messages').update({ is_pinned: msg.isPinned }).eq('id', msgId);
+      } catch (err) {
+        console.error('Error updating pin status:', err);
+      }
+    }
+  }
+
+  function setupRealtime() {
+    if (!window.db) return;
+    
+    // Subscribe to new messages inserted by other users
+    window.db
+      .channel('public:messages')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload) => {
+        if (payload.eventType === 'INSERT') {
+          const newMsg = payload.new;
+          const formatted = {
+            id: newMsg.id,
+            authorId: newMsg.author_id,
+            text: newMsg.text,
+            imageBase64: newMsg.image_base64,
+            fileData: newMsg.file_data,
+            replyTo: newMsg.reply_to,
+            isPinned: newMsg.is_pinned,
+            anonymous: newMsg.anonymous,
+            createdAt: Number(newMsg.created_at)
+          };
+          if (!state.messages.some(m => m.id === formatted.id)) {
+            state.messages.push(formatted);
+            notify({ type: 'messages' });
+            if (global.MP_CHAT && state.currentTab === 'chat') {
+              global.MP_CHAT.render();
+            }
+          }
+        } else if (payload.eventType === 'UPDATE') {
+          const updated = payload.new;
+          const index = state.messages.findIndex(m => m.id === updated.id);
+          if (index !== -1) {
+            state.messages[index].isPinned = updated.is_pinned;
+            notify({ type: 'messages' });
+            if (global.MP_CHAT && state.currentTab === 'chat') {
+              global.MP_CHAT.render();
+            }
+          }
+        }
+      })
+      .subscribe();
+  }
+
   async function loadFromDatabase() {
     state.currentUser = getSavedUser();
-    if (state.currentUser && state.currentUser.year) {
-      state.viewingYear = state.currentUser.year;
-    }
-
-    if (typeof STORAGE.loadPrefs === 'function') {
-      state.prefs = STORAGE.loadPrefs();
-    }
 
     if (!window.db) return;
 
@@ -122,12 +154,7 @@
           id: u.id,
           fullName: u.full_name,
           username: u.username,
-          email: u.email,
-          academicId: u.academic_id,
-          year: u.academic_year,
-          isAdmin: u.is_admin,
-          role: u.role,
-          createdAt: new Date(u.created_at).getTime()
+          email: u.email
         }));
       }
 
@@ -140,13 +167,14 @@
           imageBase64: m.image_base64,
           fileData: m.file_data,
           replyTo: m.reply_to,
-          reactions: m.reactions || {},
+          isPinned: m.is_pinned,
           anonymous: m.anonymous,
           createdAt: Number(m.created_at)
         }));
       }
 
       notify({ type: 'init' });
+      setupRealtime();
     } catch (err) {
       console.error('Error fetching data:', err);
     }
@@ -158,8 +186,8 @@
     state,
     subscribe,
     setTab,
-    setViewingYear,
     addMessage,
+    togglePinMessage,
     loadFromDatabase
   };
 
