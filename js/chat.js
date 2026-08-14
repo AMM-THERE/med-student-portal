@@ -1,6 +1,6 @@
 /* ============================================================
-   chat.js — Full Community Chat with Attachments, Reply & Pin
-   ============================================================ */
+    chat.js — Full Community Chat with Attachments, Reply & Pin
+    ============================================================ */
 (function (global) {
   'use strict';
 
@@ -85,7 +85,7 @@
                       ${msg.isPinned ? `<span class="text-[10px] text-amber-400">📌 Pinned</span>` : ''}
                     </div>
 
-                    <div class="relative p-3.5 rounded-2xl text-sm ${isMe ? 'bg-brand-600 text-white rounded-tr-none' : 'bg-slate-800 text-slate-200 rounded-tl-none border border-slate-700/60'} shadow-sm leading-relaxed whitespace-pre-wrap break-words">
+                    <div class="relative p-3.5 rounded-2xl text-sm w-fit max-w-full ${isMe ? 'bg-brand-600 text-white rounded-tr-none' : 'bg-slate-800 text-slate-200 rounded-tl-none border border-slate-700/60'} shadow-sm leading-relaxed whitespace-pre-wrap break-words">
                       
                       <!-- Replying Context -->
                       ${parentMsg ? `
@@ -98,10 +98,10 @@
                       ${UI.ESC ? UI.ESC(msg.text || '') : (msg.text || '')}
 
                       <!-- Attached Image -->
-                      ${msg.imageBase64 ? `<img src="${msg.imageBase64}" class="mt-2.5 rounded-xl max-h-64 object-cover border border-black/20" />` : ''}
+                      ${msg.imageBase64 && msg.imageBase64.length > 20 ? `<img src="${msg.imageBase64}" class="mt-2.5 rounded-xl max-h-64 object-cover border border-black/20 block" />` : ''}
 
                       <!-- Attached File -->
-                      ${msg.fileData ? `
+                      ${msg.fileData && msg.fileData.url ? `
                         <a href="${msg.fileData.url}" download="${msg.fileData.name}" class="mt-2.5 flex items-center gap-2 p-2 rounded-xl bg-black/20 hover:bg-black/30 text-xs transition border border-white/10">
                           <span class="text-base">📄</span>
                           <span class="truncate max-w-[180px] font-medium">${msg.fileData.name}</span>
@@ -110,9 +110,9 @@
                       ` : ''}
 
                       <!-- Action Buttons (Hover) -->
-                      <div class="absolute ${isMe ? '-left-16' : '-right-16'} top-2 hidden group-hover:flex items-center gap-1 bg-slate-800 border border-slate-700 rounded-lg p-1 shadow-lg">
-                        <button class="btn-reply text-xs p-1 hover:bg-slate-700 rounded text-slate-300" data-id="${msg.id}" title="Reply">↩️</button>
-                        <button class="btn-pin text-xs p-1 hover:bg-slate-700 rounded text-slate-300" data-id="${msg.id}" title="Pin/Unpin">📌</button>
+                      <div class="absolute ${isMe ? '-left-16' : '-right-16'} top-2 hidden group-hover:flex items-center gap-1 bg-slate-800 border border-slate-700 rounded-lg p-1 shadow-lg z-10">
+                        <button class="btn-reply text-xs p-1 hover:bg-slate-700 rounded text-slate-300 cursor-pointer" data-id="${msg.id}" title="Reply">↩️</button>
+                        <button class="btn-pin text-xs p-1 hover:bg-slate-700 rounded text-slate-300 cursor-pointer" data-id="${msg.id}" title="Pin/Unpin">📌</button>
                       </div>
                     </div>
                   </div>
@@ -127,7 +127,7 @@
               <span class="text-brand-400 font-bold">↩️ Replying to:</span>
               <span id="reply-preview-text" class="truncate text-slate-400"></span>
             </div>
-            <button id="cancel-reply-btn" class="text-slate-400 hover:text-white font-bold p-1">✕</button>
+            <button id="cancel-reply-btn" class="text-slate-400 hover:text-white font-bold p-1 cursor-pointer">✕</button>
           </div>
 
           <!-- Active Attachment Preview -->
@@ -136,7 +136,7 @@
               <span>📎 Attached:</span>
               <span id="file-preview-name" class="font-bold text-brand-400 truncate"></span>
             </div>
-            <button id="cancel-file-btn" class="text-slate-400 hover:text-white font-bold p-1">✕</button>
+            <button id="cancel-file-btn" class="text-slate-400 hover:text-white font-bold p-1 cursor-pointer">✕</button>
           </div>
 
           <!-- Input Footer -->
