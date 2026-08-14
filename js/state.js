@@ -4,7 +4,7 @@
 (function (global) {
   'use strict';
 
-  const STORAGE = global.MP_STORAGE;
+  const STORAGE = global.MP_STORAGE || {};
   const LISTENERS = new Set();
 
   const state = {
@@ -18,6 +18,35 @@
     viewingYear: null,
     prefs: { theme: 'system', defaultAnonymous: false }
   };
+
+  // --- Safe Session Storage Helpers ---
+  function getSavedUser() {
+    try {
+      if (typeof STORAGE.loadSession === 'function') return STORAGE.loadSession();
+      if (typeof STORAGE.getUser === 'function') return STORAGE.getUser();
+      const raw = localStorage.getItem('mp_user') || localStorage.getItem('medportal_user');
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function saveUserSession(user) {
+    try {
+      if (typeof STORAGE.saveSession === 'function') return STORAGE.saveSession(user);
+      if (typeof STORAGE.saveUser === 'function') return STORAGE.saveUser(user);
+      localStorage.setItem('mp_user', JSON.stringify(user));
+    } catch (e) {}
+  }
+
+  function clearUserSession() {
+    try {
+      if (typeof STORAGE.clearSession === 'function') return STORAGE.clearSession();
+      if (typeof STORAGE.clearUser === 'function') return STORAGE.clearUser();
+      localStorage.removeItem('mp_user');
+      localStorage.removeItem('medportal_user');
+    } catch (e) {}
+  }
 
   function notify(changes) {
     LISTENERS.forEach(fn => {
@@ -34,7 +63,6 @@
   function initRealtime() {
     if (!window.db) return;
 
-    // استقبال الرسائل الجديدة فوراً من Supabase بدون Refresh
     window.db
       .channel('public:messages')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
@@ -59,8 +87,10 @@
 
   // --- Sync Initial Data from Supabase ---
   async function loadFromDatabase() {
-    state.currentUser = STORAGE.loadSession();
-    state.prefs = STORAGE.loadPrefs();
+    state.currentUser = getSavedUser();
+    if (typeof STORAGE.loadPrefs === 'function') {
+      state.prefs = STORAGE.loadPrefs();
+    }
 
     if (!window.db) return;
 
@@ -125,13 +155,13 @@
   function loginAs(user) {
     state.currentUser = user;
     state.viewingYear = user.year;
-    STORAGE.saveSession(user);
+    saveUserSession(user);
     notify({ type: 'auth' });
   }
 
   function logout() {
     state.currentUser = null;
-    STORAGE.clearSession();
+    clearUserSession();
     notify({ type: 'auth' });
   }
 
