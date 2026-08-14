@@ -46,10 +46,10 @@
                 <p class="text-xs text-slate-500 mt-1">Be the first to start the conversation!</p>
               </div>
             ` : messages.map(msg => {
-              const author = (st.users || []).find(u => u.id === msg.authorId) || { fullName: 'Student', username: 'student' };
+              const author = (st.users || []).find(u => u.id === msg.authorId) || { fullName: user ? user.fullName : 'Student', username: 'student' };
               const isMe = user && msg.authorId === user.id;
               const isAnonymous = msg.anonymous;
-              const displayName = isAnonymous ? 'Anonymous Student' : author.fullName;
+              const displayName = isAnonymous ? 'Anonymous Student' : (isMe ? (user ? user.fullName : 'You') : author.fullName);
 
               return `
                 <div class="flex gap-3 ${isMe ? 'flex-row-reverse' : 'flex-row'} items-start group">
@@ -117,8 +117,11 @@
         createdAt: Date.now()
       };
 
-      if (STATE.addMessage) {
+      if (typeof STATE.addMessage === 'function') {
         await STATE.addMessage(msg);
+      } else {
+        st.messages = st.messages || [];
+        st.messages.push(msg);
       }
 
       if (input) input.value = '';

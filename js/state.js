@@ -70,7 +70,6 @@
     state.activeTab = normalizedTab;
     notify({ type: 'tab', tab: normalizedTab });
 
-    // Force UI re-render on tab switch
     if (global.MP_NAV && typeof global.MP_NAV.renderAll === 'function') {
       global.MP_NAV.renderAll();
     }
@@ -79,6 +78,29 @@
   function setViewingYear(year) {
     state.viewingYear = year;
     notify({ type: 'year', year });
+  }
+
+  async function addMessage(msg) {
+    state.messages.push(msg);
+    notify({ type: 'messages' });
+
+    if (window.db) {
+      try {
+        await window.db.from('messages').insert([{
+          id: msg.id,
+          author_id: msg.authorId,
+          text: msg.text || '',
+          image_base64: msg.imageBase64 || null,
+          file_data: msg.fileData || null,
+          reply_to: msg.replyTo || null,
+          reactions: msg.reactions || {},
+          anonymous: !!msg.anonymous,
+          created_at: msg.createdAt
+        }]);
+      } catch (err) {
+        console.error('Error inserting message into Supabase:', err);
+      }
+    }
   }
 
   async function loadFromDatabase() {
@@ -110,7 +132,7 @@
       }
 
       const { data: msgData } = await window.db.from('messages').select('*').order('created_at', { ascending: true });
-      if (msgData) {
+      if (msgData && msgData.length > 0) {
         state.messages = msgData.map(m => ({
           id: m.id,
           authorId: m.author_id,
@@ -137,6 +159,7 @@
     subscribe,
     setTab,
     setViewingYear,
+    addMessage,
     loadFromDatabase
   };
 
