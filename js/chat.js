@@ -98,7 +98,9 @@
                       ${UI.ESC ? UI.ESC(msg.text || '') : (msg.text || '')}
 
                       <!-- Attached Image -->
-                      ${msg.imageBase64 && msg.imageBase64.length > 20 ? `<img src="${msg.imageBase64}" class="mt-2.5 rounded-xl max-h-64 object-cover border border-black/20 block" />` : ''}
+                      ${msg.imageBase64 && typeof msg.imageBase64 === 'string' && msg.imageBase64.startsWith('data:image') ? `
+                        <img src="${msg.imageBase64}" class="mt-2.5 rounded-xl max-h-64 w-auto object-contain border border-black/20 block" />
+                      ` : ''}
 
                       <!-- Attached File -->
                       ${msg.fileData && msg.fileData.url ? `
