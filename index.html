@@ -1,293 +1,115 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en" class="h-full">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MedPortal — your medical college, in one place</title>
-  <meta name="description" content="Lectures, community, and quizzes for medical college students." />
-  <meta name="theme-color" content="#0B1020" />
-  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
-
-  <!-- Tailwind via CDN — no build step -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            ink: {
-              50:  '#F4F4F8',
-              100: '#E8EAF2',
-              200: '#C9CDE0',
-              300: '#9AA0BD',
-              400: '#6B7196',
-              500: '#454A6E',
-              600: '#2A2F45',
-              700: '#1B2038',
-              800: '#141A33',
-              900: '#0B1020'
-            },
-            cream: {
-              DEFAULT: '#FAF7F2',
-              50:  '#FDFCF8',
-              100: '#FAF7F2',
-              200: '#F1ECE2',
-              300: '#E6DFCE'
-            },
-            mint: {
-              50:  '#E9FBF1',
-              100: '#CFF7E1',
-              200: '#A4F0C9',
-              300: '#7CF0BD',
-              400: '#5DE5AB',
-              500: '#3DDC97',
-              600: '#25B578',
-              700: '#1A8E5C',
-              800: '#126844',
-              900: '#0A452C'
-            },
-            coral: {
-              50:  '#FFF1EF',
-              100: '#FFDFDA',
-              200: '#FFBFB6',
-              300: '#FF9F92',
-              400: '#FF8B7B',
-              500: '#FF7A6B',
-              600: '#E45F50',
-              700: '#B8473A',
-              800: '#8C342A',
-              900: '#5F211B'
-            },
-            amber: {
-              50:  '#FEF7E2',
-              100: '#FCEDB9',
-              200: '#FADF87',
-              300: '#F8D260',
-              400: '#F2C14E',
-              500: '#E0A82B',
-              600: '#B58317',
-              700: '#855E10',
-              800: '#5C3F0A',
-              900: '#3A2706'
-            },
-            violet: {
-              50:  '#EFEAFF',
-              100: '#DCD3FF',
-              200: '#B9A7FF',
-              300: '#9B8CFF',
-              400: '#7E6CFF',
-              500: '#634FF0',
-              600: '#4E3BC6',
-              700: '#3A2B98',
-              800: '#291D6B',
-              900: '#181043'
-            },
-            sky2: {
-              50:  '#E6F4FF',
-              100: '#C8E7FF',
-              200: '#9CD2FF',
-              300: '#7BC6FF',
-              400: '#5BB7FF',
-              500: '#3DA0F0',
-              600: '#2A7FCC',
-              700: '#1F5E99',
-              800: '#143E66',
-              900: '#0A2238'
-            },
-            rosegold: {
-              50:  '#FCEEF0',
-              100: '#F8D5DA',
-              200: '#EFAEB7',
-              300: '#E07B8A',
-              400: '#CC5C6F',
-              500: '#A84255',
-              600: '#862F40',
-              700: '#5F1F2C',
-              800: '#3D121B',
-              900: '#22080D'
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Medportal Community</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        cream: '#faf7f2',
+                        ink: {
+                            800: '#141a33',
+                            900: '#0f172a'
+                        }
+                    }
+                }
             }
-          },
-          fontFamily: {
-            sans: ['Inter', 'system-ui', 'Segoe UI', 'sans-serif'],
-            display: ['Fraunces', 'Inter', 'serif'],
-            mono: ['JetBrains Mono', 'ui-monospace', 'monospace']
-          },
-          boxShadow: {
-            'glow-mint':   '0 10px 30px -10px rgba(61, 220, 151, 0.55)',
-            'glow-mint-l': '0 14px 40px -10px rgba(61, 220, 151, 0.75)',
-            'glow-coral':  '0 10px 30px -10px rgba(255, 122, 107, 0.5)',
-            'soft':        '0 1px 2px rgba(11,16,32,0.06), 0 8px 24px -12px rgba(11,16,32,0.18)',
-            'soft-ink':    '0 1px 2px rgba(11,16,32,0.08), 0 12px 32px -16px rgba(11,16,32,0.35)',
-            'inset-line':  'inset 0 0 0 1px rgba(255,255,255,0.06)'
-          },
-          backgroundImage: {
-            'hero-ink':    'linear-gradient(135deg, #0B1020 0%, #1B2038 60%, #2A2F45 100%)',
-            'hero-mint':   'linear-gradient(135deg, #E9FBF1 0%, #CFF7E1 50%, #FAF7F2 100%)',
-            'hero-coral':  'linear-gradient(135deg, #FFF1EF 0%, #FFDFDA 50%, #FEF7E2 100%)',
-            'hero-violet': 'linear-gradient(135deg, #EFEAFF 0%, #DCD3FF 50%, #FAF7F2 100%)',
-            'mint-grad':   'linear-gradient(135deg, #3DDC97 0%, #25B578 100%)',
-            'coral-grad':  'linear-gradient(135deg, #FF7A6B 0%, #E45F50 100%)',
-            'violet-grad': 'linear-gradient(135deg, #9B8CFF 0%, #634FF0 100%)',
-            'amber-grad':  'linear-gradient(135deg, #F2C14E 0%, #E0A82B 100%)',
-            'sky-grad':    'linear-gradient(135deg, #7BC6FF 0%, #3DA0F0 100%)',
-            'rose-grad':   'linear-gradient(135deg, #E07B8A 0%, #A84255 100%)',
-            'paper':       'radial-gradient(1200px 600px at 0% 0%, #FDFCF8 0%, #FAF7F2 60%, #F1ECE2 100%)',
-            'ink-paper':   'radial-gradient(1200px 600px at 0% 0%, #141A33 0%, #0B1020 70%)'
-          },
-          animation: {
-            'rise-in':   'riseIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) both',
-            'fade-up':   'fadeUp 0.35s ease-out both',
-            'pop-in':    'popIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) both',
-            'chat-pop':  'chatPop 0.32s cubic-bezier(0.16, 1, 0.3, 1) both',
-            'gradient-pan': 'gradientPan 14s ease-in-out infinite',
-            'pulse-dot': 'pulseDot 1.6s ease-in-out infinite',
-            'pulse-ring':'pulseRing 2.4s ease-out infinite',
-            'glow-pulse':'glowPulse 3s ease-in-out infinite',
-            'badge-spin':'badgeSpin 22s linear infinite'
-          },
-          keyframes: {
-            riseIn: {
-              '0%':   { opacity: 0, transform: 'translateY(14px)' },
-              '100%': { opacity: 1, transform: 'translateY(0)' }
-            },
-            fadeUp: {
-              '0%':   { opacity: 0, transform: 'translateY(8px)' },
-              '100%': { opacity: 1, transform: 'translateY(0)' }
-            },
-            popIn: {
-              '0%':   { opacity: 0, transform: 'scale(0.9)' },
-              '100%': { opacity: 1, transform: 'scale(1)' }
-            },
-            chatPop: {
-              '0%':   { opacity: 0, transform: 'translateY(10px) scale(0.98)' },
-              '60%':  { opacity: 1, transform: 'translateY(-2px) scale(1.01)' },
-              '100%': { opacity: 1, transform: 'translateY(0) scale(1)' }
-            },
-            gradientPan: {
-              '0%, 100%': { backgroundPosition: '0% 50%' },
-              '50%':      { backgroundPosition: '100% 50%' }
-            },
-            pulseDot: {
-              '0%, 100%': { opacity: 0.4 },
-              '50%':      { opacity: 1 }
-            },
-            pulseRing: {
-              '0%':   { boxShadow: '0 0 0 0 rgba(61, 220, 151, 0.55)' },
-              '70%':  { boxShadow: '0 0 0 14px rgba(61, 220, 151, 0)' },
-              '100%': { boxShadow: '0 0 0 0 rgba(61, 220, 151, 0)' }
-            },
-            glowPulse: {
-              '0%, 100%': { filter: 'drop-shadow(0 0 8px rgba(61, 220, 151, 0.35))' },
-              '50%':      { filter: 'drop-shadow(0 0 14px rgba(61, 220, 151, 0.6))' }
-            },
-            badgeSpin: {
-              '0%':   { transform: 'rotate(0deg)' },
-              '100%': { transform: 'rotate(360deg)' }
-            }
-          }
         }
-      }
-    };
-  </script>
-
-  <!-- Type: Inter (body) + Fraunces (display) + JetBrains Mono -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700;9..144,800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet" />
-
-  <!-- SheetJS for Excel/CSV parsing (admin quiz import) -->
-  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-
-  <!-- Custom Scroll & Overflow Fix for Modals -->
-  <style>
-    #modal-root > div {
-      display: flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      padding: 1rem !important;
-    }
-    #modal-root > div > div, 
-    #modal-root form {
-      max-height: 85vh !important;
-      overflow-y: auto !important;
-    }
-  </style>
-
-  <link rel="stylesheet" href="css/styles.css" />
+    </script>
+    <style>
+        /* تصحيح المسافات والخطوط لتفادي أي سبيس زيارة */
+        .message-container {
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem !important; /* تقليل المسافة بين الرسائل وبعضها */
+        }
+        .message-bubble {
+            padding: 0.5rem 0.75rem !important; /* تصغير المساحة داخل الفقاعة */
+            line-height: 1.4 !important; /* تقليل المسافة بين السطور */
+        }
+        *::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        *::-webkit-scrollbar-thumb {
+            background: rgba(100, 116, 139, 0.35);
+            border-radius: 4px;
+        }
+    </style>
 </head>
+<body class="h-full bg-cream text-ink-800 font-sans antialiased flex flex-col">
 
-<body class="h-full bg-cream text-ink-800 dark:bg-ink-900 dark:text-cream-50 font-sans antialiased">
+    <!-- Header -->
+    <header class="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shadow-sm">
+        <div class="flex items-center space-x-3">
+            <h1 class="text-xl font-bold text-ink-900">MEDPORTAL</h1>
+            <span class="text-xs bg-sky-100 text-sky-700 px-2.5 py-1 rounded-full font-medium">Community</span>
+        </div>
+        <div class="flex items-center space-x-2">
+            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                <span class="w-2 h-2 mr-1.5 bg-emerald-500 rounded-full animate-pulse"></span> Live discussion
+            </span>
+        </div>
+    </header>
 
-  <!-- Ambient gradient layer (subtle, behind everything) -->
-  <div class="fixed inset-0 -z-10 pointer-events-none bg-paper dark:bg-ink-paper"></div>
+    <!-- Main Chat Layout -->
+    <main class="flex-1 flex flex-col max-w-4xl w-full mx-auto p-4 overflow-hidden">
+        
+        <!-- Messages Box -->
+        <div id="messages-container" class="flex-1 overflow-y-auto pr-2 space-y-2 message-container">
+            <!-- الرسائل هيتم إضافتها هنا ديناميكياً بواسطة JavaScript -->
+        </div>
 
-  <!-- Global error banner -->
-  <div id="global-error" class="hidden fixed top-0 inset-x-0 z-[70] pointer-events-auto">
-    <div class="bg-coral-600 text-white px-4 py-2.5 text-sm flex items-center justify-between gap-3 shadow-lg">
-      <div class="flex items-center gap-2 min-w-0">
-        <svg viewBox="0 0 24 24" class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.29 3.86l-8.18 14.18A2 2 0 0 0 3.83 21h16.34a2 2 0 0 0 1.72-2.96L13.71 3.86a2 2 0 0 0-3.42 0z" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <span class="truncate"><strong>Something went wrong:</strong> <span id="global-error-text"></span></span>
-      </div>
-      <button id="global-error-reload" class="px-2 py-1 rounded bg-white/20 hover:bg-white/30 text-xs font-semibold">Reload</button>
-    </div>
-  </div>
+        <!-- Input Area -->
+        <div class="mt-4 bg-white border border-slate-200 rounded-2xl p-2 shadow-sm flex items-center">
+            <input 
+                type="text" 
+                id="message-input" 
+                placeholder="Type a message..." 
+                class="flex-1 bg-transparent border-none focus:outline-none px-3 text-sm text-ink-800 placeholder-slate-400"
+            >
+            <button 
+                id="send-button" 
+                class="bg-sky-600 hover:bg-sky-700 text-white px-5 py-2 rounded-xl text-sm font-medium transition duration-200 flex items-center shadow-md">
+                Send 🚀
+            </button>
+        </div>
 
-  <!-- Mobile drawer backdrop -->
-  <div id="sidebar-backdrop" class="hidden fixed inset-0 z-30 bg-ink-900/60 backdrop-blur-sm md:hidden" onclick="window.MP_NAV && window.MP_NAV.closeDrawer()"></div>
+    </main>
 
-  <!-- Layout wrapper -->
-  <div class="flex h-full min-h-screen">
+    <!-- Scripts -->
+    <script src="js/supabase-db.js"></script>
+    <script src="js/state.js"></script>
+    <script>
+        // كود تجريبي لتأكيد ربط الإرسال والعرض بالمساحات الجديدة المظبوطة
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+        const messagesContainer = document.getElementById('messages-container');
 
-    <!-- Sidebar -->
-    <aside id="sidebar" class="fixed inset-y-0 left-0 z-40 w-72 -translate-x-full md:translate-x-0 transition-transform duration-200 ease-out md:sticky md:top-0 md:h-screen md:w-64 shrink-0 border-r border-cream-300/70 dark:border-ink-700/70 bg-cream-50/90 dark:bg-ink-800/90 backdrop-blur-xl flex flex-col"></aside>
+        sendButton.addEventListener('click', () => {
+            const text = messageInput.value.trim();
+            if(!text) return;
 
-    <!-- Right column -->
-    <div class="flex-1 min-w-0 flex flex-col">
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'w-fit max-w-[80%] bg-sky-600 text-white rounded-2xl rounded-tr-none message-bubble shadow-sm ml-auto break-words whitespace-pre-wrap';
+            msgDiv.textContent = text;
+            
+            messagesContainer.appendChild(msgDiv);
+            messageInput.value = '';
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        });
 
-      <!-- Top bar -->
-      <header id="topbar" class="sticky top-0 z-20 backdrop-blur-xl bg-cream-50/80 dark:bg-ink-800/80 border-b border-cream-300/60 dark:border-ink-700/60"></header>
-
-      <!-- Main view container -->
-      <main id="view" class="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 pb-32"></main>
-    </div>
-  </div>
-
-  <!-- Floating Action Button -->
-  <div id="fab-slot" class="fixed bottom-6 right-6 z-40"></div>
-
-  <!-- Toast container -->
-  <div id="toast-slot" class="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 items-center pointer-events-none"></div>
-
-  <!-- Modal root -->
-  <div id="modal-root"></div>
-
-  <!-- Lightbox (image preview) -->
-  <div id="lightbox" class="hidden fixed inset-0 z-[60] bg-ink-900/90 items-center justify-center p-4 cursor-zoom-out" onclick="this.classList.add('hidden'); this.classList.remove('flex');">
-    <img id="lightbox-img" class="max-h-full max-w-full rounded-2xl shadow-2xl ring-1 ring-white/10" alt="preview" />
-  </div>
-
-  <!-- Hidden file inputs -->
-  <input id="chat-image-input" type="file" accept="image/*" class="hidden" />
-  <input id="quiz-file-input" type="file" accept=".csv,.xlsx,.xls" class="hidden" />
-
-  <!-- Supabase SDK & Database Config -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="js/supabase-db.js"></script>
-
-  <!-- App scripts (Traditional order without type="module") -->
-  <script src="js/config.js"></script>
-  <script src="js/storage.js"></script>
-  <script src="js/state.js"></script>
-  <script src="js/utils.js"></script>
-  <script src="js/ui.js"></script>
-  <script src="js/modals.js"></script>
-  <script src="js/lectures.js"></script>
-  <script src="js/chat.js"></script>
-  <script src="js/quiz.js"></script>
-  <script src="js/settings.js"></script>
-  <script src="js/auth.js"></script>
-  <script src="js/navigation.js"></script>
-  <script src="js/app.js"></script>
+        messageInput.addEventListener('keypress', (e) => {
+            if(e.key === 'Enter') {
+                sendButton.click();
+            }
+        });
+    </script>
 </body>
 </html>
