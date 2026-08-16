@@ -237,11 +237,11 @@
   async function createQuiz({ title, description, subject, year, questions }) {
     if (!window.db) {
       console.error('Supabase not available — cannot create quiz.');
-      return null;
+      return { error: 'Supabase client is not available (window.db is missing).' };
     }
     if (!Array.isArray(questions) || questions.length === 0) {
       console.error('createQuiz called with no questions.');
-      return null;
+      return { error: 'No questions to save.' };
     }
 
     try {
@@ -259,7 +259,7 @@
 
       if (quizErr || !quizRow) {
         console.error('Error creating quiz (does the `quizzes` table exist?):', quizErr);
-        return null;
+        return { error: (quizErr && (quizErr.message || quizErr.hint || quizErr.details)) || 'Unknown error inserting into `quizzes`.' };
       }
 
       const rows = questions.map((q, i) => ({
@@ -281,6 +281,7 @@
 
       if (qErr) {
         console.error('Error inserting quiz questions (does the `quiz_questions` table exist?):', qErr);
+        return { error: (qErr.message || qErr.hint || qErr.details) || 'Unknown error inserting into `quiz_questions`.' };
       }
 
       const savedRows = qData && qData.length === rows.length ? qData : rows;
@@ -309,7 +310,7 @@
       return newQuiz;
     } catch (err) {
       console.error('Error creating quiz:', err);
-      return null;
+      return { error: (err && err.message) || String(err) };
     }
   }
 

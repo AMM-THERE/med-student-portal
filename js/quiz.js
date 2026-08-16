@@ -448,8 +448,9 @@
           questions: parsedUpload.questions
         });
 
-        if (!created) {
-          alert('Something went wrong creating the quiz. Check the console for details.');
+        if (!created || created.error) {
+          const reason = created && created.error ? created.error : 'Unknown error (see console for details).';
+          alert('Could not create the quiz:\n\n' + reason);
           submitBtn.disabled = false;
           submitBtn.textContent = 'Create Quiz';
           return;
