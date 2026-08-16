@@ -7,20 +7,6 @@
   const STORAGE = global.MP_STORAGE || {};
   const LISTENERS = new Set();
 
-  const state = {
-    currentUser: null,
-    currentTab: 'lectures',
-    activeTab: 'lectures',
-    users: [],
-    messages: [],
-    lectures: [],
-    quizzes: [],
-    quizAttempts: [],
-    bookmarks: [],
-    viewingYear: null,
-    prefs: { theme: 'system', defaultAnonymous: false }
-  };
-
   function getSavedUser() {
     try {
       const CFG = global.MP_CONFIG;
@@ -36,6 +22,44 @@
       return null;
     }
   }
+
+  /**
+   * Load saved preferences (theme, font scale, default-anonymous) from
+   * localStorage. This used to be missing entirely, which meant `state.prefs`
+   * always started at a hardcoded default — so navigation.js's mountShell()
+   * would stomp the user's saved dark-mode choice back to light/system on
+   * every page refresh. Reading it here, synchronously, before mountShell
+   * ever runs, fixes that at the source.
+   */
+  function getSavedPrefs() {
+    try {
+      const CFG = global.MP_CONFIG;
+      const defaults = (CFG && CFG.DEFAULT_PREFS)
+        ? CFG.DEFAULT_PREFS
+        : { theme: 'light', fontScale: 1.0, defaultAnonymous: false };
+      if (CFG && CFG.KEYS && typeof STORAGE.get === 'function') {
+        const saved = STORAGE.get(CFG.KEYS.PREFS, null);
+        if (saved) return Object.assign({}, defaults, saved);
+      }
+      return Object.assign({}, defaults);
+    } catch (e) {
+      return { theme: 'light', fontScale: 1.0, defaultAnonymous: false };
+    }
+  }
+
+  const state = {
+    currentUser: null,
+    currentTab: 'lectures',
+    activeTab: 'lectures',
+    users: [],
+    messages: [],
+    lectures: [],
+    quizzes: [],
+    quizAttempts: [],
+    bookmarks: [],
+    viewingYear: null,
+    prefs: getSavedPrefs()
+  };
 
   function notify(changes) {
     LISTENERS.forEach(fn => {
@@ -95,10 +119,6 @@
 
     if (window.db) {
       try {
-        // Only fields confirmed to exist on the Supabase `users` table are sent
-        // (matches what loadFromDatabase reads back below). If you add columns
-        // for academic_id / year / is_admin / role / default_anonymous to that
-        // table, add them to this insert too so they sync across devices.
         await window.db.from('users').insert([{
           id: user.id,
           full_name: user.fullName,
@@ -122,9 +142,6 @@
 
     if (window.db) {
       try {
-        // Requires a `lectures` table in Supabase with matching columns for this
-        // to sync across devices. If that table doesn't exist yet, this insert
-        // fails silently (logged below) and the lecture still works locally.
         await window.db.from('lectures').insert([{
           id: lecture.id,
           title: lecture.title,
@@ -176,9 +193,6 @@
         await window.db.from('messages').insert([{
           id: msg.id,
           author_id: msg.authorId,
-          // Requires an `author_name` text column on the Supabase `messages`
-          // table. Without it, names get lost on reload / other devices and
-          // fall back to the generic "Student" placeholder.
           author_name: msg.authorName || null,
           text: msg.text || '',
           image_base64: msg.imageBase64 || null,
@@ -186,6 +200,11 @@
           reply_to: msg.replyTo || null,
           is_pinned: !!msg.isPinned,
           anonymous: !!msg.anonymous,
+          // Requires an `is_deleted` boolean column (default false) on the
+          // Supabase `messages` table — see deleteMessage()/hardDeleteMessage()
+          // below. If that column doesn't exist yet, add it or this insert
+          // will fail with an "unknown column" error.
+          is_deleted: false,
           created_at: msg.createdAt
         }]);
       } catch (err) {
@@ -209,8 +228,44 @@
     }
   }
 
-  /** Delete a message: local optimistic removal + best-effort Supabase sync. */
+  /**
+   * Soft-delete a message. Content is kept in place (so admins can still
+   * audit what was said and who deleted it) but flagged `isDeleted` so
+   * chat.js can hide the real content from non-admins and show a
+   * "This message was deleted" placeholder instead. A deleted message is
+   * also automatically unpinned — a pinned "deleted" bubble would be
+   * confusing in the pinned banner.
+   *
+   * Permission (own message vs admin) is enforced by the caller in chat.js.
+   */
   async function deleteMessage(msgId) {
+    const msg = state.messages.find(m => m.id === msgId);
+    if (!msg) return;
+    msg.isDeleted = true;
+    msg.deletedAt = Date.now();
+    if (msg.isPinned) msg.isPinned = false;
+    notify({ type: 'messages' });
+
+    if (window.db) {
+      try {
+        // Requires `is_deleted` (bool) + `deleted_at` (int8) columns on the
+        // Supabase `messages` table. Falls back to a local-only soft delete
+        // on this device if those columns don't exist yet.
+        await window.db.from('messages')
+          .update({ is_deleted: true, deleted_at: msg.deletedAt, is_pinned: false })
+          .eq('id', msgId);
+      } catch (err) {
+        console.error('Error soft-deleting message in Supabase (does `is_deleted` column exist?):', err);
+      }
+    }
+  }
+
+  /**
+   * Permanently remove a message that has already been soft-deleted.
+   * Admin-only, enforced by the caller in chat.js — this is the "I don't
+   * want to see this deleted message anymore" action.
+   */
+  async function hardDeleteMessage(msgId) {
     const idx = state.messages.findIndex(m => m.id === msgId);
     if (idx === -1) return;
     state.messages.splice(idx, 1);
@@ -218,9 +273,10 @@
 
     if (window.db) {
       try {
-        await window.db.from('messages').delete().eq('id', msgId);
+        const { error } = await window.db.from('messages').delete().eq('id', msgId);
+        if (error) console.error('Error permanently deleting message from Supabase:', error);
       } catch (err) {
-        console.error('Error deleting message from Supabase:', err);
+        console.error('Error permanently deleting message from Supabase:', err);
       }
     }
   }
@@ -237,9 +293,6 @@
     if (arr.length === 0) delete msg.reactions[emoji];
     notify({ type: 'messages' });
 
-    // Best-effort: only persists across devices if a `reactions` column
-    // exists on the Supabase `messages` table. Fails silently otherwise —
-    // reactions still work locally on this device either way.
     if (window.db) {
       try {
         await window.db.from('messages').update({ reactions: msg.reactions }).eq('id', msgId);
@@ -266,11 +319,6 @@
       return { error: 'No questions to save.' };
     }
 
-    // quizzes.created_by is a foreign key into users(id) — make sure this
-    // user's row actually exists in Supabase before we try to reference it,
-    // and surface the real reason if it doesn't (e.g. an RLS policy on the
-    // `users` table blocking the upsert), instead of only ever seeing the
-    // generic foreign-key error below.
     if (state.currentUser) {
       const syncErr = await ensureUserSynced(state.currentUser);
       if (syncErr) {
@@ -348,6 +396,34 @@
     }
   }
 
+  /**
+   * Delete a quiz (admin-only, enforced by the caller in quiz.js): local
+   * optimistic removal + best-effort Supabase sync. Child questions are
+   * deleted explicitly first in case the `quiz_questions.quiz_id` foreign
+   * key doesn't have ON DELETE CASCADE set up.
+   */
+  async function deleteQuiz(quizId) {
+    const idx = state.quizzes.findIndex(q => q.id === quizId);
+    if (idx === -1) return null;
+    state.quizzes.splice(idx, 1);
+    notify({ type: 'quizzes' });
+
+    if (window.db) {
+      try {
+        await window.db.from('quiz_questions').delete().eq('quiz_id', quizId);
+        const { error } = await window.db.from('quizzes').delete().eq('id', quizId);
+        if (error) {
+          console.error('Error deleting quiz from Supabase:', error);
+          return error.message || error.hint || error.details || 'Unknown error deleting from `quizzes`.';
+        }
+      } catch (err) {
+        console.error('Error deleting quiz from Supabase:', err);
+        return (err && err.message) || String(err);
+      }
+    }
+    return null;
+  }
+
   /** Record a completed quiz attempt (score out of totalQuestions). */
   async function submitQuizAttempt(quizId, score, totalQuestions) {
     const uid = state.currentUser ? state.currentUser.id : null;
@@ -410,7 +486,6 @@
   function setupRealtime() {
     if (!window.db) return;
 
-    // Subscribe to new messages inserted by other users
     window.db
       .channel('public:messages')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload) => {
@@ -426,6 +501,8 @@
             replyTo: newMsg.reply_to,
             isPinned: newMsg.is_pinned,
             anonymous: newMsg.anonymous,
+            isDeleted: newMsg.is_deleted || false,
+            deletedAt: newMsg.deleted_at ? Number(newMsg.deleted_at) : null,
             createdAt: Number(newMsg.created_at)
           };
           if (!state.messages.some(m => m.id === formatted.id)) {
@@ -441,6 +518,8 @@
           if (index !== -1) {
             state.messages[index].isPinned = updated.is_pinned;
             if (updated.reactions) state.messages[index].reactions = updated.reactions;
+            if (typeof updated.is_deleted === 'boolean') state.messages[index].isDeleted = updated.is_deleted;
+            if (updated.deleted_at) state.messages[index].deletedAt = Number(updated.deleted_at);
             notify({ type: 'messages' });
             if (global.MP_CHAT && state.currentTab === 'chat') {
               global.MP_CHAT.render();
@@ -522,12 +601,12 @@
           isPinned: m.is_pinned,
           anonymous: m.anonymous,
           reactions: m.reactions || {},
+          isDeleted: m.is_deleted || false,
+          deletedAt: m.deleted_at ? Number(m.deleted_at) : null,
           createdAt: Number(m.created_at)
         }));
       }
 
-      // Best-effort: only succeeds if a `lectures` table exists in Supabase.
-      // Fails harmlessly otherwise — lectures still work locally either way.
       try {
         const { data: lecData } = await window.db.from('lectures').select('*');
         if (lecData && lecData.length > 0) {
@@ -546,9 +625,6 @@
         console.warn('No `lectures` table found in Supabase yet — lectures will stay local-only until it is created.');
       }
 
-      // Best-effort: only succeeds once the `quizzes` + `quiz_questions`
-      // tables exist. Nested select pulls each quiz's questions in one call
-      // via the quiz_questions.quiz_id foreign key.
       try {
         const { data: quizData } = await window.db
           .from('quizzes')
@@ -582,7 +658,6 @@
         console.warn('No `quizzes` table found in Supabase yet — run the quiz schema SQL to enable quizzes.');
       }
 
-      // Per-user data: only load once we know who's logged in.
       if (state.currentUser) {
         try {
           const { data: attemptsData } = await window.db
@@ -641,8 +716,10 @@
     addMessage,
     togglePinMessage,
     deleteMessage,
+    hardDeleteMessage,
     toggleReaction,
     createQuiz,
+    deleteQuiz,
     submitQuizAttempt,
     toggleSavedQuestion,
     loadFromDatabase

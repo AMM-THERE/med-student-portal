@@ -1,6 +1,6 @@
 /* ============================================================
    quiz.js — Quiz Hub, Excel/CSV import, exam runner, results,
-             and "save for later" bookmarks
+             "save for later" bookmarks, and admin delete
    ============================================================ */
 (function (global) {
   'use strict';
@@ -9,12 +9,16 @@
   function getUI()    { return global.MP_UI || {}; }
   function getCFG()   { return global.MP_CONFIG || {}; }
   function getMODALS(){ return global.MP_MODALS || {}; }
+  function getUTIL()  { return global.MP_UTIL || {}; }
   function el(id)     { return document.getElementById(id); }
 
   // ---- Module-local exam-run state (not persisted until finished) ----
-  let currentRun = null;      // { quiz, order: [questionId...], index, answers: Map<questionId, {selected, isCorrect}> }
+  let currentRun = null;
   let showingResults = false;
-  let parsedUpload = null;    // { questions: [...], errors: [...] } from the last file parsed in the upload modal
+  let parsedUpload = null;
+
+  // ---- ephemeral hub search state ----
+  const filter = { q: '' };
 
   const OPTION_LETTERS = ['A', 'B', 'C', 'D'];
 
@@ -45,7 +49,6 @@
     return -1;
   }
 
-  /** Maps a raw "correct answer" cell value to 'A'|'B'|'C'|'D', or null if it can't be resolved. */
   function resolveCorrectLetter(rawAnswer, options) {
     const val = String(rawAnswer == null ? '' : rawAnswer).trim();
     if (!val) return null;
@@ -53,8 +56,6 @@
     const lower = val.toLowerCase();
     if (letterMap[lower]) return letterMap[lower];
 
-    // Fall back to matching the answer text against the option text itself
-    // (e.g. the sheet's "correct answer" column repeats the option's words).
     const keys = ['A', 'B', 'C', 'D'];
     for (const k of keys) {
       if (String(options[k] == null ? '' : options[k]).trim() === val) return k;
@@ -62,10 +63,6 @@
     return null;
   }
 
-  /**
-   * Reads a File (csv/xlsx/xls) and returns a Promise resolving to
-   * { questions: [{ text, options:{A,B,C,D}, correct, explanation }], errors: [string] }
-   */
   function parseQuizFile(file) {
     return new Promise((resolve, reject) => {
       if (!global.XLSX) {
@@ -94,7 +91,7 @@
           const colC = findColumn(headers, HEADER_CANDIDATES.C);
           const colD = findColumn(headers, HEADER_CANDIDATES.D);
           const colCorrect = findColumn(headers, HEADER_CANDIDATES.correct);
-          const colExplanation = findColumn(headers, HEADER_CANDIDATES.explanation); // optional, -1 if absent
+          const colExplanation = findColumn(headers, HEADER_CANDIDATES.explanation);
 
           if (colQ === -1 || colA === -1 || colB === -1 || colC === -1 || colD === -1 || colCorrect === -1) {
             resolve({
@@ -111,7 +108,7 @@
 
           for (let r = 1; r < rows.length; r++) {
             const row = rows[r];
-            if (!row || row.every(cell => String(cell == null ? '' : cell).trim() === '')) continue; // skip blank rows
+            if (!row || row.every(cell => String(cell == null ? '' : cell).trim() === '')) continue;
 
             const text = String(row[colQ] == null ? '' : row[colQ]).trim();
             const options = {
@@ -165,6 +162,17 @@
     return attempts.reduce((latest, a) => (!latest || new Date(a.completedAt) > new Date(latest.completedAt)) ? a : latest, null);
   }
 
+  /** Matches the Quiz Hub search box against a quiz's title and subject —
+   *  so typing "anatomy" finds every quiz tagged with that subject. */
+  function applyQuizFilter(list) {
+    if (!filter.q) return list;
+    const q = filter.q.toLowerCase();
+    return list.filter(qz =>
+      (qz.title || '').toLowerCase().includes(q) ||
+      (qz.subject || '').toLowerCase().includes(q)
+    );
+  }
+
   /* ---------------------------------------------------------
      Main render dispatcher
      --------------------------------------------------------- */
@@ -183,22 +191,22 @@
   }
 
   /* ---------------------------------------------------------
-     Quiz Hub — list of quizzes + "Saved for Review" box
+     Quiz Hub — search, list of quizzes + "Saved for Review" box
      --------------------------------------------------------- */
 
   function renderHub(view) {
     const STATE = getSTATE();
     const UI = getUI();
+    const UTIL = getUTIL();
     const st = STATE.state || {};
-    const quizzes = st.quizzes || [];
+    const allQuizzes = st.quizzes || [];
+    const quizzes = applyQuizFilter(allQuizzes);
     const user = st.currentUser;
 
-    // Build the saved-for-review list: cross-reference bookmarks against
-    // every question across every loaded quiz.
     const savedItems = [];
     (st.bookmarks || []).forEach(bm => {
       if (user && bm.userId !== user.id) return;
-      for (const quiz of quizzes) {
+      for (const quiz of allQuizzes) {
         const q = (quiz.questions || []).find(qq => qq.id === bm.questionId);
         if (q) { savedItems.push({ quiz, question: q }); break; }
       }
@@ -227,12 +235,21 @@
           </div>
         </div>
 
+        <!-- Search -->
+        <div class="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
+          <label class="block flex-1">
+            <span class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">Search</span>
+            <input id="quiz-search" value="${UI.ESC ? UI.ESC(filter.q) : filter.q}" placeholder="title or subject (e.g. Anatomy)…" class="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-sm" />
+          </label>
+          <div class="text-xs text-slate-500 dark:text-slate-400 shrink-0 self-end pb-1.5">${quizzes.length} of ${allQuizzes.length}</div>
+        </div>
+
         ${quizzes.length === 0 ? `
           <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-12 text-center space-y-3 shadow-sm">
             <div class="w-16 h-16 rounded-2xl bg-success-50 dark:bg-success-900/30 text-success-600 flex items-center justify-center mx-auto text-3xl">📝</div>
-            <h3 class="text-lg font-bold text-slate-900 dark:text-slate-100">No Quizzes Available Yet</h3>
-            <p class="text-sm text-slate-500 max-w-md mx-auto">Upload a quiz spreadsheet to help batch mates practice for upcoming exams.</p>
-            ${user && user.isAdmin ? `
+            <h3 class="text-lg font-bold text-slate-900 dark:text-slate-100">${allQuizzes.length === 0 ? 'No Quizzes Available Yet' : 'No quizzes match your search'}</h3>
+            <p class="text-sm text-slate-500 max-w-md mx-auto">${allQuizzes.length === 0 ? 'Upload a quiz spreadsheet to help batch mates practice for upcoming exams.' : 'Try a different title or subject.'}</p>
+            ${user && user.isAdmin && allQuizzes.length === 0 ? `
               <button id="btn-upload-quiz-empty" class="mt-4 px-5 py-2.5 bg-success-600 hover:bg-success-700 text-white rounded-xl font-bold text-sm transition inline-flex items-center gap-2 shadow-md">
                 ${UI.icon ? UI.icon('plus', 'w-4 h-4') : '+'}
                 <span>Upload First Quiz</span>
@@ -251,7 +268,10 @@
                       <h4 class="font-bold text-slate-900 dark:text-slate-100 truncate">${UI.ESC ? UI.ESC(q.title) : q.title}</h4>
                       <p class="text-xs text-slate-500 mt-0.5">${count} Question${count === 1 ? '' : 's'}${q.subject ? ' · ' + (UI.ESC ? UI.ESC(q.subject) : q.subject) : ''}</p>
                     </div>
-                    ${UI.yearBadge ? UI.yearBadge(q.year) : ''}
+                    <div class="flex flex-col items-end gap-1 shrink-0">
+                      ${UI.yearBadge ? UI.yearBadge(q.year) : ''}
+                      ${user && user.isAdmin ? `<button class="btn-delete-quiz p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30 transition" data-id="${q.id}" title="Delete quiz">${UI.icon ? UI.icon('trash', 'w-3.5 h-3.5') : '🗑️'}</button>` : ''}
+                    </div>
                   </div>
                   ${last ? `<p class="text-xs font-semibold text-brand-600 dark:text-brand-400">Last score: ${last.score}/${last.totalQuestions}</p>` : ''}
                   <button class="btn-start-quiz w-full py-2 bg-brand-50 hover:bg-brand-100 text-brand-700 dark:bg-brand-900/30 dark:text-brand-300 font-semibold text-sm rounded-xl transition disabled:opacity-40 disabled:cursor-not-allowed" data-quiz-id="${q.id}" ${count === 0 ? 'disabled' : ''}>Start Quiz</button>
@@ -271,14 +291,38 @@
     const savedBtn = el('btn-saved-questions');
     if (savedBtn) savedBtn.addEventListener('click', openSavedQuestions);
 
+    const searchInput = el('quiz-search');
+    if (searchInput && UTIL.debounce) {
+      searchInput.addEventListener('input', UTIL.debounce(e => {
+        filter.q = e.target.value.trim();
+        render();
+      }, 150));
+    }
+
     document.querySelectorAll('.btn-start-quiz').forEach(b => {
       b.addEventListener('click', () => startQuiz(b.dataset.quizId));
+    });
+
+    // Admin-only quiz delete
+    document.querySelectorAll('.btn-delete-quiz').forEach(b => {
+      b.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const id = b.dataset.id;
+        if (confirm('Delete this quiz? This cannot be undone.')) {
+          const err = await STATE.deleteQuiz(id);
+          if (err) {
+            alert('Could not delete the quiz:\n\n' + err);
+          } else if (UI.toast) {
+            UI.toast('Quiz deleted.', { variant: 'info' });
+          }
+          render();
+        }
+      });
     });
   }
 
   /* ---------------------------------------------------------
-     Saved-for-Review modal (opened from the small bookmark icon
-     in the Quiz Hub header, instead of an inline banner)
+     Saved-for-Review modal
      --------------------------------------------------------- */
 
   function openSavedQuestions() {
@@ -334,7 +378,7 @@
           await STATE.toggleSavedQuestion(b.dataset.qid);
           m.setContent(listHtml());
           wireRemoveButtons();
-          render(); // refresh the hub behind the modal (badge count, etc.)
+          render();
         });
       });
     }
@@ -524,7 +568,7 @@
       quiz,
       order: quiz.questions.map(q => q.id),
       index: 0,
-      answers: new Map() // questionId -> { selected: 'A'..'D', isCorrect: bool }
+      answers: new Map()
     };
     showingResults = false;
     render();
@@ -659,7 +703,6 @@
     let score = 0;
     currentRun.answers.forEach(a => { if (a.isCorrect) score++; });
 
-    // Persist the attempt once, the first time results are shown.
     if (!currentRun.saved) {
       currentRun.saved = true;
       STATE.submitQuizAttempt(quiz.id, score, total);

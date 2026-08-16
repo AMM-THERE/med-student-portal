@@ -1,6 +1,6 @@
 /* ============================================================
     chat.js — Full Community Chat with Attachments, Reply, Pin,
-    Reactions & Delete
+    Reactions, Soft/Hard Delete & Admin Moderation
     ============================================================ */
 (function (global) {
   'use strict';
@@ -41,32 +41,24 @@
     const view = el('view');
     if (!view) return;
 
-    // Capture the message list's scroll state BEFORE we tear down and
-    // rebuild the DOM. Re-renders happen for lots of reasons that have
-    // nothing to do with a new message arriving — opening the ⋮ menu,
-    // picking a reaction, pinning, canceling a reply — and none of those
-    // should move the view. Only snap to the bottom if the user was
-    // already there (or this is the very first render of the tab).
     const prevList = el('chat-messages-list');
     const prevScrollTop = prevList ? prevList.scrollTop : null;
     const wasNearBottom = prevList
       ? (prevList.scrollHeight - prevList.scrollTop - prevList.clientHeight) < 80
-      : true; // no list yet — first time opening Community, start at the bottom
+      : true;
 
     const STATE = getSTATE();
     const UI = getUI();
     const st = STATE.state || {};
     const user = st.currentUser;
+    const isAdminViewer = !!(user && user.isAdmin);
     const messages = st.messages || [];
     const isAnon = st.prefs ? !!st.prefs.defaultAnonymous : false;
 
-    const pinnedMessages = messages.filter(m => m.isPinned);
+    // A pinned+deleted message shouldn't linger in the pinned banner (this
+    // is also enforced when deleting, but guarded here too for old data).
+    const pinnedMessages = messages.filter(m => m.isPinned && !m.isDeleted);
 
-    // Fixed height instead of a vh guess: viewport minus the sticky topbar
-    // (4rem) and the page shell's own padding (main's py-6 + pb-32 = 9.5rem
-    // bottom, 1.5rem top → 11rem total, +4rem topbar = 15rem). This makes
-    // the Community view exactly fill the visible area below the topbar,
-    // so the outer page can never scroll — only #chat-messages-list can.
     view.innerHTML = `
       <div class="max-w-5xl mx-auto flex flex-col gap-3 h-[calc(100vh-15rem)] min-h-[420px] animate-fade-in">
 
@@ -97,9 +89,7 @@
           </div>
         ` : ''}
 
-        <!-- Chat Container: fills whatever space is left in the flex
-             column above (flex-1 min-h-0) — the page itself can never
-             scroll; only the message list below does. -->
+        <!-- Chat Container -->
         <div class="flex-1 min-h-0 bg-slate-900/80 rounded-2xl border border-slate-800 shadow-xl flex flex-col">
 
           <!-- Message List -->
@@ -113,6 +103,7 @@
             ` : messages.map((msg, idx) => {
               const isMe = user && msg.authorId === user.id;
               const displayName = resolveAuthorName(msg, st, isMe, user);
+              const isDeleted = !!msg.isDeleted;
 
               const parentMsg = msg.replyTo ? messages.find(m => m.id === msg.replyTo) : null;
 
@@ -126,11 +117,18 @@
               const showHeader = !sameSenderAsPrev;
               const rowSpacing = showHeader ? (idx === 0 ? '' : 'mt-3') : 'mt-0.5';
 
-              const canDelete = !!isMe;
+              // Soft-delete: the owner can delete their own message, and
+              // admins can delete anyone's. Hard-delete (permanent removal)
+              // is admin-only and only offered once a message is already
+              // soft-deleted.
+              const canSoftDelete = !isDeleted && !!(isMe || isAdminViewer);
+              const canHardDelete = isDeleted && isAdminViewer;
 
+              // Reactions are hidden once a message is deleted — they stop
+              // being meaningful once the content itself is gone/hidden.
               const reactions = msg.reactions || {};
               const reactionEntries = Object.keys(reactions).filter(e => (reactions[e] || []).length > 0);
-              const reactionsHtml = reactionEntries.length ? `
+              const reactionsHtml = (!isDeleted && reactionEntries.length) ? `
                 <div class="flex flex-wrap gap-1 mt-1 ${isMe ? 'justify-end' : 'justify-start'}">
                   ${reactionEntries.map(e => {
                     const list = reactions[e] || [];
@@ -142,19 +140,46 @@
                 </div>
               ` : '';
 
-              const menuHtml = `
-                <div class="msg-actions relative shrink-0 self-start mt-1">
-                  <button class="btn-more w-6 h-6 flex items-center justify-center rounded-full text-slate-500 hover:text-white hover:bg-slate-700/70 transition" data-id="${msg.id}" title="More">⋮</button>
-                  <div class="msg-menu ${openMenuId === msg.id ? '' : 'hidden'} absolute z-20 ${isMe ? 'right-0' : 'left-0'} top-7 w-48 max-w-[75vw] bg-slate-800 border border-slate-700 rounded-xl shadow-xl p-1.5 text-xs">
-                    <div class="flex items-center justify-between gap-1 px-1 pb-1.5 mb-1.5 border-b border-slate-700">
-                      ${QUICK_REACTIONS.map(e => `<button class="reaction-pick text-base hover:scale-125 transition" data-id="${msg.id}" data-emoji="${e}">${e}</button>`).join('')}
+              let menuHtml = '';
+              if (!isDeleted) {
+                menuHtml = `
+                  <div class="msg-actions relative shrink-0 self-start mt-1">
+                    <button class="btn-more w-6 h-6 flex items-center justify-center rounded-full text-slate-500 hover:text-white hover:bg-slate-700/70 transition" data-id="${msg.id}" title="More">⋮</button>
+                    <div class="msg-menu ${openMenuId === msg.id ? '' : 'hidden'} absolute z-20 ${isMe ? 'right-0' : 'left-0'} top-7 w-48 max-w-[75vw] bg-slate-800 border border-slate-700 rounded-xl shadow-xl p-1.5 text-xs">
+                      <div class="flex items-center justify-between gap-1 px-1 pb-1.5 mb-1.5 border-b border-slate-700">
+                        ${QUICK_REACTIONS.map(e => `<button class="reaction-pick text-base hover:scale-125 transition" data-id="${msg.id}" data-emoji="${e}">${e}</button>`).join('')}
+                      </div>
+                      <button class="menu-reply w-full text-left px-2 py-1.5 rounded-lg hover:bg-slate-700 text-slate-200" data-id="${msg.id}">↩️ Reply</button>
+                      <button class="menu-pin w-full text-left px-2 py-1.5 rounded-lg hover:bg-slate-700 text-slate-200" data-id="${msg.id}">📌 ${msg.isPinned ? 'Unpin' : 'Pin'}</button>
+                      ${canSoftDelete ? `<button class="menu-delete-soft w-full text-left px-2 py-1.5 rounded-lg hover:bg-rose-900/40 text-rose-300" data-id="${msg.id}">🗑️ Delete</button>` : ''}
                     </div>
-                    <button class="menu-reply w-full text-left px-2 py-1.5 rounded-lg hover:bg-slate-700 text-slate-200" data-id="${msg.id}">↩️ Reply</button>
-                    <button class="menu-pin w-full text-left px-2 py-1.5 rounded-lg hover:bg-slate-700 text-slate-200" data-id="${msg.id}">📌 ${msg.isPinned ? 'Unpin' : 'Pin'}</button>
-                    ${canDelete ? `<button class="menu-delete w-full text-left px-2 py-1.5 rounded-lg hover:bg-rose-900/40 text-rose-300" data-id="${msg.id}">🗑️ Delete</button>` : ''}
                   </div>
-                </div>
-              `;
+                `;
+              } else if (canHardDelete) {
+                menuHtml = `
+                  <div class="msg-actions relative shrink-0 self-start mt-1">
+                    <button class="btn-more w-6 h-6 flex items-center justify-center rounded-full text-slate-500 hover:text-white hover:bg-slate-700/70 transition" data-id="${msg.id}" title="More">⋮</button>
+                    <div class="msg-menu ${openMenuId === msg.id ? '' : 'hidden'} absolute z-20 ${isMe ? 'right-0' : 'left-0'} top-7 w-48 max-w-[75vw] bg-slate-800 border border-slate-700 rounded-xl shadow-xl p-1.5 text-xs">
+                      <button class="menu-delete-hard w-full text-left px-2 py-1.5 rounded-lg hover:bg-rose-900/40 text-rose-300" data-id="${msg.id}">🗑️ Delete permanently</button>
+                    </div>
+                  </div>
+                `;
+              }
+
+              // Bubble body: non-admins viewing a deleted message see only a
+              // placeholder — the original text/image/file never renders for
+              // them. Admins keep seeing the real content plus a "Deleted"
+              // tag, so they can moderate with full context.
+              let bubbleInner;
+              if (isDeleted && !isAdminViewer) {
+                bubbleInner = `<span class="italic text-slate-400">This message was deleted.</span>`;
+              } else {
+                const replyBlock = parentMsg ? `<div class="mb-1.5 p-1.5 rounded-lg bg-black/20 border-l-2 border-brand-400 text-xs opacity-85"><span class="font-bold block text-[10px] text-brand-200">Replying to message:</span><span class="line-clamp-1">${UI.ESC ? UI.ESC(parentMsg.text) : parentMsg.text}</span></div>` : '';
+                const textSpan = msg.text ? `<span class="block whitespace-pre-wrap break-words">${UI.ESC ? UI.ESC(msg.text) : msg.text}</span>` : '';
+                const imageBlock = (msg.imageBase64 && typeof msg.imageBase64 === 'string' && msg.imageBase64.startsWith('data:image')) ? `<img src="${msg.imageBase64}" class="chat-zoomable-img mt-2 rounded-xl max-h-64 w-auto object-contain border border-black/20 block cursor-zoom-in" />` : '';
+                const fileBlock = (msg.fileData && msg.fileData.url) ? `<a href="${msg.fileData.url}" download="${msg.fileData.name}" class="mt-2 flex items-center gap-2 p-1.5 rounded-xl bg-black/20 hover:bg-black/30 text-xs transition border border-white/10"><span class="text-base">📄</span><span class="truncate max-w-[180px] font-medium">${msg.fileData.name}</span><span class="text-[10px] opacity-70 shrink-0">⬇️ Download</span></a>` : '';
+                bubbleInner = `${replyBlock}${textSpan}${imageBlock}${fileBlock}`;
+              }
 
               return `
                 <div class="flex gap-1.5 ${isMe ? 'flex-row-reverse' : 'flex-row'} items-start group ${rowSpacing}">
@@ -170,10 +195,11 @@
                         <span class="text-xs font-bold text-slate-300">${UI.ESC ? UI.ESC(displayName) : displayName}</span>
                         <span class="text-[10px] text-slate-500">${msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}</span>
                         ${msg.isPinned ? `<span class="text-[10px] text-amber-400">📌 Pinned</span>` : ''}
+                        ${isDeleted && isAdminViewer ? `<span class="text-[10px] text-rose-400 font-bold">🗑️ Deleted</span>` : ''}
                       </div>
-                    ` : (msg.isPinned ? `<div class="px-1 mb-0.5"><span class="text-[10px] text-amber-400">📌 Pinned</span></div>` : '')}
+                    ` : (msg.isPinned || (isDeleted && isAdminViewer) ? `<div class="px-1 mb-0.5 flex items-center gap-2">${msg.isPinned ? '<span class="text-[10px] text-amber-400">📌 Pinned</span>' : ''}${isDeleted && isAdminViewer ? '<span class="text-[10px] text-rose-400 font-bold">🗑️ Deleted</span>' : ''}</div>` : '')}
 
-                    <div class="relative p-2.5 rounded-2xl text-sm w-fit max-w-full ${isMe ? 'bg-brand-600 text-white rounded-tr-none' : 'bg-slate-800 text-slate-200 rounded-tl-none border border-slate-700/60'} shadow-sm leading-relaxed">${parentMsg ? `<div class="mb-1.5 p-1.5 rounded-lg bg-black/20 border-l-2 border-brand-400 text-xs opacity-85"><span class="font-bold block text-[10px] text-brand-200">Replying to message:</span><span class="line-clamp-1">${UI.ESC ? UI.ESC(parentMsg.text) : parentMsg.text}</span></div>` : ''}${msg.text ? `<span class="block whitespace-pre-wrap break-words">${UI.ESC ? UI.ESC(msg.text) : msg.text}</span>` : ''}${msg.imageBase64 && typeof msg.imageBase64 === 'string' && msg.imageBase64.startsWith('data:image') ? `<img src="${msg.imageBase64}" class="chat-zoomable-img mt-2 rounded-xl max-h-64 w-auto object-contain border border-black/20 block cursor-zoom-in" />` : ''}${msg.fileData && msg.fileData.url ? `<a href="${msg.fileData.url}" download="${msg.fileData.name}" class="mt-2 flex items-center gap-2 p-1.5 rounded-xl bg-black/20 hover:bg-black/30 text-xs transition border border-white/10"><span class="text-base">📄</span><span class="truncate max-w-[180px] font-medium">${msg.fileData.name}</span><span class="text-[10px] opacity-70 shrink-0">⬇️ Download</span></a>` : ''}</div>
+                    <div class="relative p-2.5 rounded-2xl text-sm w-fit max-w-full ${isMe ? 'bg-brand-600 text-white rounded-tr-none' : 'bg-slate-800 text-slate-200 rounded-tl-none border border-slate-700/60'} shadow-sm leading-relaxed">${bubbleInner}</div>
                     ${reactionsHtml}
                   </div>
 
@@ -234,9 +260,6 @@
 
     ensureGlobalCloser();
 
-    // Click a chat image to zoom it into the full-screen lightbox already
-    // defined in index.html (#lightbox / #lightbox-img) — it just never had
-    // anything wired up to open it before.
     document.querySelectorAll('.chat-zoomable-img').forEach(img => {
       img.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -249,10 +272,6 @@
       });
     });
 
-    // Only snap to the bottom if the user was already down there (or this
-    // is the first render). Otherwise restore exactly where they were —
-    // this is what stops opening the ⋮ menu, reacting, pinning, etc. from
-    // teleporting the view down to the latest message.
     const msgList = el('chat-messages-list');
     if (msgList) {
       if (wasNearBottom) {
@@ -346,13 +365,27 @@
       });
     });
 
-    document.querySelectorAll('.menu-delete').forEach(b => {
+    // Soft delete — available to the message owner, or to any admin.
+    document.querySelectorAll('.menu-delete-soft').forEach(b => {
       b.addEventListener('click', async (e) => {
         e.stopPropagation();
         const id = b.dataset.id;
         openMenuId = null;
-        if (confirm('Delete this message? This cannot be undone.')) {
+        if (confirm('Delete this message?')) {
           if (STATE.deleteMessage) await STATE.deleteMessage(id);
+        }
+        render();
+      });
+    });
+
+    // Hard delete — admin-only, only shown on messages already soft-deleted.
+    document.querySelectorAll('.menu-delete-hard').forEach(b => {
+      b.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const id = b.dataset.id;
+        openMenuId = null;
+        if (confirm('Permanently delete this message? This cannot be undone.')) {
+          if (STATE.hardDeleteMessage) await STATE.hardDeleteMessage(id);
         }
         render();
       });
@@ -406,6 +439,8 @@
         replyTo: currentReplyTo,
         anonymous: isAnonMsg,
         reactions: {},
+        isDeleted: false,
+        deletedAt: null,
         createdAt: Date.now()
       };
 

@@ -6,6 +6,7 @@
 
   function getSTATE()   { return global.MP_STATE || {}; }
   function getSTORAGE() { return global.MP_STORAGE || {}; }
+  function getCFG()     { return global.MP_CONFIG || {}; }
   function getUI()      { return global.MP_UI || {}; }
 
   function applyTheme(theme) {
@@ -13,16 +14,26 @@
     document.documentElement.classList.toggle('dark', isDark);
   }
 
+  /**
+   * Persist prefs under the same key state.js reads on boot
+   * (CFG.KEYS.PREFS = 'medportal_prefs'). This used to write to a
+   * different, ad-hoc 'mp_prefs' key that state.js never read — so the
+   * saved theme never made it back into state.prefs, and refreshing the
+   * page silently reset dark mode. Keeping both sides on one key is the
+   * actual fix.
+   */
   function savePrefs(newPrefs) {
     const STATE = getSTATE();
     const STORAGE = getSTORAGE();
+    const CFG = getCFG();
     if (STATE.state) {
       STATE.state.prefs = { ...STATE.state.prefs, ...newPrefs };
     }
-    if (typeof STORAGE.savePrefs === 'function') {
-      STORAGE.savePrefs(STATE.state ? STATE.state.prefs : newPrefs);
+    const toSave = STATE.state ? STATE.state.prefs : newPrefs;
+    if (CFG && CFG.KEYS && typeof STORAGE.set === 'function') {
+      STORAGE.set(CFG.KEYS.PREFS, toSave);
     } else {
-      localStorage.setItem('mp_prefs', JSON.stringify(STATE.state ? STATE.state.prefs : newPrefs));
+      localStorage.setItem('medportal_prefs', JSON.stringify(toSave));
     }
     if (newPrefs.theme) {
       applyTheme(newPrefs.theme);
@@ -129,12 +140,18 @@
     });
   }
 
+  // Early paint: apply the saved theme as soon as this script parses,
+  // before the DOM is fully mounted, to avoid a flash of the wrong theme.
+  // Reads from the same CFG.KEYS.PREFS key that state.js and savePrefs()
+  // use, instead of the old mismatched 'mp_prefs' key.
   try {
-    const raw = localStorage.getItem('mp_prefs');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && parsed.theme) applyTheme(parsed.theme);
-    }
+    const CFG = getCFG();
+    const STORAGE = getSTORAGE();
+    const key = (CFG && CFG.KEYS && CFG.KEYS.PREFS) || 'medportal_prefs';
+    const saved = typeof STORAGE.get === 'function'
+      ? STORAGE.get(key, null)
+      : JSON.parse(localStorage.getItem(key) || 'null');
+    if (saved && saved.theme) applyTheme(saved.theme);
   } catch (e) {}
 
   global.MP_SETTINGS = { openSettings, applyTheme, savePrefs };

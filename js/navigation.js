@@ -278,8 +278,17 @@
 
   function mountShell() {
     const STATE = getSTATE();
+    const SET = getSET();
     const prefs = (STATE.state && STATE.state.prefs) || {};
-    document.documentElement.classList.toggle('dark', prefs.theme === 'dark');
+    // Delegate to MP_SETTINGS.applyTheme so 'system' is resolved the same
+    // way here as it is inside the Settings modal, instead of this
+    // function's own (narrower) light/dark-only check silently overriding
+    // a saved theme on every page load.
+    if (SET.applyTheme) {
+      SET.applyTheme(prefs.theme);
+    } else {
+      document.documentElement.classList.toggle('dark', prefs.theme === 'dark');
+    }
     renderAll();
   }
 
