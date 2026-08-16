@@ -8,6 +8,7 @@
   function getSTATE() { return global.MP_STATE || {}; }
   function getUI()    { return global.MP_UI || {}; }
   function getCFG()   { return global.MP_CONFIG || {}; }
+  function getMODALS(){ return global.MP_MODALS || {}; }
   function el(id)     { return document.getElementById(id); }
 
   // ---- Module-local exam-run state (not persisted until finished) ----
@@ -210,35 +211,21 @@
             <h1 class="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight">Quiz Hub</h1>
             <p class="text-sm text-slate-600 dark:text-slate-400 mt-1">Test your medical knowledge with practice MCQs.</p>
           </div>
-          ${user && user.isAdmin ? `
-            <button id="btn-upload-quiz-banner" class="px-4 py-2.5 bg-success-600 hover:bg-success-700 text-white rounded-xl font-bold text-sm shadow-md transition flex items-center gap-2">
-              ${UI.icon ? UI.icon('plus', 'w-4 h-4') : '+'}
-              <span>Create Quiz</span>
-            </button>
-          ` : ''}
-        </div>
-
-        ${savedItems.length > 0 ? `
-          <div class="bg-amber-50 dark:bg-amber-900/20 border border-amber-300/50 dark:border-amber-700/40 rounded-2xl p-5 space-y-3">
-            <div class="flex items-center gap-2">
-              <span class="text-xl">🔖</span>
-              <h3 class="font-bold text-slate-900 dark:text-slate-100">Saved for Review (${savedItems.length})</h3>
-            </div>
-            <div class="space-y-2">
-              ${savedItems.map(({ quiz, question }) => `
-                <div class="bg-white dark:bg-slate-900 rounded-xl border border-amber-200/60 dark:border-amber-800/40 p-3 flex items-start justify-between gap-3">
-                  <div class="min-w-0">
-                    <p class="text-xs text-slate-500 font-semibold uppercase tracking-wide">${UI.ESC ? UI.ESC(quiz.title) : quiz.title}</p>
-                    <p class="text-sm text-slate-800 dark:text-slate-200 mt-0.5">${UI.ESC ? UI.ESC(question.text) : question.text}</p>
-                    <p class="text-xs text-emerald-600 dark:text-emerald-400 mt-1 font-semibold">Correct: ${question.correct}) ${UI.ESC ? UI.ESC(question.options[question.correct] || '') : (question.options[question.correct] || '')}</p>
-                    ${question.explanation ? `<p class="text-xs text-slate-500 mt-0.5">${UI.ESC ? UI.ESC(question.explanation) : question.explanation}</p>` : ''}
-                  </div>
-                  <button class="btn-unsave shrink-0 text-xs px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-semibold" data-qid="${question.id}">Remove</button>
-                </div>
-              `).join('')}
-            </div>
+          <div class="flex items-center gap-2 shrink-0">
+            ${savedItems.length > 0 ? `
+              <button id="btn-saved-questions" class="relative p-2.5 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-300/50 dark:border-amber-700/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition" title="Saved for Review">
+                <span class="text-lg leading-none">🔖</span>
+                <span class="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center">${savedItems.length}</span>
+              </button>
+            ` : ''}
+            ${user && user.isAdmin ? `
+              <button id="btn-upload-quiz-banner" class="px-4 py-2.5 bg-success-600 hover:bg-success-700 text-white rounded-xl font-bold text-sm shadow-md transition flex items-center gap-2">
+                ${UI.icon ? UI.icon('plus', 'w-4 h-4') : '+'}
+                <span>Create Quiz</span>
+              </button>
+            ` : ''}
           </div>
-        ` : ''}
+        </div>
 
         ${quizzes.length === 0 ? `
           <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-12 text-center space-y-3 shadow-sm">
@@ -281,16 +268,77 @@
     if (btnBanner) btnBanner.addEventListener('click', openUploadQuiz);
     if (btnEmpty) btnEmpty.addEventListener('click', openUploadQuiz);
 
+    const savedBtn = el('btn-saved-questions');
+    if (savedBtn) savedBtn.addEventListener('click', openSavedQuestions);
+
     document.querySelectorAll('.btn-start-quiz').forEach(b => {
       b.addEventListener('click', () => startQuiz(b.dataset.quizId));
     });
+  }
 
-    document.querySelectorAll('.btn-unsave').forEach(b => {
-      b.addEventListener('click', async () => {
-        await STATE.toggleSavedQuestion(b.dataset.qid);
-        render();
+  /* ---------------------------------------------------------
+     Saved-for-Review modal (opened from the small bookmark icon
+     in the Quiz Hub header, instead of an inline banner)
+     --------------------------------------------------------- */
+
+  function openSavedQuestions() {
+    const STATE = getSTATE();
+    const UI = getUI();
+    const MODALS = getMODALS();
+    if (!MODALS.Modal) return;
+
+    function buildItems() {
+      const st = STATE.state || {};
+      const user = st.currentUser;
+      const quizzes = st.quizzes || [];
+      const items = [];
+      (st.bookmarks || []).forEach(bm => {
+        if (user && bm.userId !== user.id) return;
+        for (const quiz of quizzes) {
+          const q = (quiz.questions || []).find(qq => qq.id === bm.questionId);
+          if (q) { items.push({ quiz, question: q }); break; }
+        }
       });
-    });
+      return items;
+    }
+
+    function listHtml() {
+      const items = buildItems();
+      if (items.length === 0) {
+        return `<p class="text-sm text-slate-500 dark:text-slate-400 text-center py-8">No saved questions yet.</p>`;
+      }
+      return `
+        <div class="space-y-2">
+          ${items.map(({ quiz, question }) => `
+            <div class="bg-white dark:bg-slate-900 rounded-xl border border-amber-200/60 dark:border-amber-800/40 p-3 flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="text-xs text-slate-500 font-semibold uppercase tracking-wide">${UI.ESC ? UI.ESC(quiz.title) : quiz.title}</p>
+                <p class="text-sm text-slate-800 dark:text-slate-200 mt-0.5">${UI.ESC ? UI.ESC(question.text) : question.text}</p>
+                <p class="text-xs text-emerald-600 dark:text-emerald-400 mt-1 font-semibold">Correct: ${question.correct}) ${UI.ESC ? UI.ESC(question.options[question.correct] || '') : (question.options[question.correct] || '')}</p>
+                ${question.explanation ? `<p class="text-xs text-slate-500 mt-0.5">${UI.ESC ? UI.ESC(question.explanation) : question.explanation}</p>` : ''}
+              </div>
+              <button class="btn-unsave-modal shrink-0 text-xs px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-semibold" data-qid="${question.id}">Remove</button>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    const m = new MODALS.Modal({ title: '🔖 Saved for Review', size: 'lg' });
+    m.setContent(listHtml());
+    m.open();
+
+    function wireRemoveButtons() {
+      m.el.querySelectorAll('.btn-unsave-modal').forEach(b => {
+        b.addEventListener('click', async () => {
+          await STATE.toggleSavedQuestion(b.dataset.qid);
+          m.setContent(listHtml());
+          wireRemoveButtons();
+          render(); // refresh the hub behind the modal (badge count, etc.)
+        });
+      });
+    }
+    wireRemoveButtons();
   }
 
   /* ---------------------------------------------------------

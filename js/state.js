@@ -144,17 +144,23 @@
   /** Delete a lecture (admin-only, enforced by the caller in lectures.js): local optimistic removal + best-effort Supabase sync. */
   async function deleteLecture(lecId) {
     const idx = state.lectures.findIndex(l => l.id === lecId);
-    if (idx === -1) return;
+    if (idx === -1) return null;
     state.lectures.splice(idx, 1);
     notify({ type: 'lectures' });
 
     if (window.db) {
       try {
-        await window.db.from('lectures').delete().eq('id', lecId);
+        const { error } = await window.db.from('lectures').delete().eq('id', lecId);
+        if (error) {
+          console.error('Error deleting lecture from Supabase:', error);
+          return error.message || error.hint || error.details || 'Unknown error deleting from `lectures`.';
+        }
       } catch (err) {
         console.error('Error deleting lecture from Supabase:', err);
+        return (err && err.message) || String(err);
       }
     }
+    return null;
   }
 
   async function addMessage(msg) {
