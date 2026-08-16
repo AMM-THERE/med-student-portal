@@ -227,9 +227,154 @@
     }
   }
 
+  /**
+   * Create a quiz + its questions in Supabase (requires the `quizzes` and
+   * `quiz_questions` tables). questions is an array of:
+   *   { text, options: { A, B, C, D }, correct: 'A'|'B'|'C'|'D', explanation }
+   * Returns the created quiz object (with questions attached) or null on
+   * failure.
+   */
+  async function createQuiz({ title, description, subject, year, questions }) {
+    if (!window.db) {
+      console.error('Supabase not available — cannot create quiz.');
+      return null;
+    }
+    if (!Array.isArray(questions) || questions.length === 0) {
+      console.error('createQuiz called with no questions.');
+      return null;
+    }
+
+    try {
+      const { data: quizRow, error: quizErr } = await window.db
+        .from('quizzes')
+        .insert([{
+          title,
+          description: description || null,
+          subject: subject || null,
+          year: year || null,
+          created_by: state.currentUser ? state.currentUser.id : null
+        }])
+        .select()
+        .single();
+
+      if (quizErr || !quizRow) {
+        console.error('Error creating quiz (does the `quizzes` table exist?):', quizErr);
+        return null;
+      }
+
+      const rows = questions.map((q, i) => ({
+        quiz_id: quizRow.id,
+        question_text: q.text,
+        option_a: q.options.A,
+        option_b: q.options.B,
+        option_c: q.options.C,
+        option_d: q.options.D,
+        correct_option: q.correct,
+        explanation: q.explanation || null,
+        order_index: i
+      }));
+
+      const { data: qData, error: qErr } = await window.db
+        .from('quiz_questions')
+        .insert(rows)
+        .select();
+
+      if (qErr) {
+        console.error('Error inserting quiz questions (does the `quiz_questions` table exist?):', qErr);
+      }
+
+      const savedRows = qData && qData.length === rows.length ? qData : rows;
+
+      const newQuiz = {
+        id: quizRow.id,
+        title: quizRow.title,
+        description: quizRow.description,
+        subject: quizRow.subject,
+        year: quizRow.year,
+        createdBy: quizRow.created_by,
+        createdAt: quizRow.created_at,
+        questions: savedRows.map((qq, i) => ({
+          id: qq.id || ('local_' + quizRow.id + '_' + i),
+          quizId: quizRow.id,
+          text: qq.question_text,
+          options: { A: qq.option_a, B: qq.option_b, C: qq.option_c, D: qq.option_d },
+          correct: qq.correct_option,
+          explanation: qq.explanation,
+          orderIndex: i
+        }))
+      };
+
+      state.quizzes.unshift(newQuiz);
+      notify({ type: 'quizzes' });
+      return newQuiz;
+    } catch (err) {
+      console.error('Error creating quiz:', err);
+      return null;
+    }
+  }
+
+  /** Record a completed quiz attempt (score out of totalQuestions). */
+  async function submitQuizAttempt(quizId, score, totalQuestions) {
+    const uid = state.currentUser ? state.currentUser.id : null;
+    const local = {
+      id: 'attempt_' + Date.now(),
+      quizId,
+      userId: uid,
+      score,
+      totalQuestions,
+      completedAt: new Date().toISOString()
+    };
+    state.quizAttempts.push(local);
+    notify({ type: 'quizAttempts' });
+
+    if (window.db && uid) {
+      try {
+        await window.db.from('quiz_attempts').insert([{
+          quiz_id: quizId,
+          user_id: uid,
+          score,
+          total_questions: totalQuestions
+        }]);
+      } catch (err) {
+        console.error('Error saving quiz attempt (does the `quiz_attempts` table exist?):', err);
+      }
+    }
+  }
+
+  /** Toggle a "save for later" bookmark on a quiz question for the current user. */
+  async function toggleSavedQuestion(questionId) {
+    const uid = state.currentUser ? state.currentUser.id : null;
+    if (!uid) return;
+
+    const existingIdx = state.bookmarks.findIndex(b => b.questionId === questionId && b.userId === uid);
+
+    if (existingIdx !== -1) {
+      state.bookmarks.splice(existingIdx, 1);
+      notify({ type: 'bookmarks' });
+      if (window.db) {
+        try {
+          await window.db.from('saved_questions').delete().eq('user_id', uid).eq('question_id', questionId);
+        } catch (err) {
+          console.error('Error removing saved question:', err);
+        }
+      }
+    } else {
+      const local = { id: 'bm_' + Date.now(), userId: uid, questionId };
+      state.bookmarks.push(local);
+      notify({ type: 'bookmarks' });
+      if (window.db) {
+        try {
+          await window.db.from('saved_questions').insert([{ user_id: uid, question_id: questionId }]);
+        } catch (err) {
+          console.error('Error saving question (does the `saved_questions` table exist?):', err);
+        }
+      }
+    }
+  }
+
   function setupRealtime() {
     if (!window.db) return;
-    
+
     // Subscribe to new messages inserted by other users
     window.db
       .channel('public:messages')
@@ -334,6 +479,80 @@
         console.warn('No `lectures` table found in Supabase yet — lectures will stay local-only until it is created.');
       }
 
+      // Best-effort: only succeeds once the `quizzes` + `quiz_questions`
+      // tables exist. Nested select pulls each quiz's questions in one call
+      // via the quiz_questions.quiz_id foreign key.
+      try {
+        const { data: quizData } = await window.db
+          .from('quizzes')
+          .select('*, quiz_questions(*)')
+          .order('created_at', { ascending: false });
+
+        if (quizData) {
+          state.quizzes = quizData.map(q => ({
+            id: q.id,
+            title: q.title,
+            description: q.description,
+            subject: q.subject,
+            year: q.year,
+            createdBy: q.created_by,
+            createdAt: q.created_at,
+            questions: (q.quiz_questions || [])
+              .slice()
+              .sort((a, b) => (a.order_index || 0) - (b.order_index || 0))
+              .map(qq => ({
+                id: qq.id,
+                quizId: qq.quiz_id,
+                text: qq.question_text,
+                options: { A: qq.option_a, B: qq.option_b, C: qq.option_c, D: qq.option_d },
+                correct: qq.correct_option,
+                explanation: qq.explanation,
+                orderIndex: qq.order_index
+              }))
+          }));
+        }
+      } catch (err) {
+        console.warn('No `quizzes` table found in Supabase yet — run the quiz schema SQL to enable quizzes.');
+      }
+
+      // Per-user data: only load once we know who's logged in.
+      if (state.currentUser) {
+        try {
+          const { data: attemptsData } = await window.db
+            .from('quiz_attempts')
+            .select('*')
+            .eq('user_id', state.currentUser.id);
+          if (attemptsData) {
+            state.quizAttempts = attemptsData.map(a => ({
+              id: a.id,
+              quizId: a.quiz_id,
+              userId: a.user_id,
+              score: a.score,
+              totalQuestions: a.total_questions,
+              completedAt: a.completed_at
+            }));
+          }
+        } catch (err) {
+          console.warn('No `quiz_attempts` table found in Supabase yet.');
+        }
+
+        try {
+          const { data: savedData } = await window.db
+            .from('saved_questions')
+            .select('*')
+            .eq('user_id', state.currentUser.id);
+          if (savedData) {
+            state.bookmarks = savedData.map(s => ({
+              id: s.id,
+              userId: s.user_id,
+              questionId: s.question_id
+            }));
+          }
+        } catch (err) {
+          console.warn('No `saved_questions` table found in Supabase yet.');
+        }
+      }
+
       notify({ type: 'init' });
       setupRealtime();
     } catch (err) {
@@ -355,6 +574,9 @@
     togglePinMessage,
     deleteMessage,
     toggleReaction,
+    createQuiz,
+    submitQuizAttempt,
+    toggleSavedQuestion,
     loadFromDatabase
   };
 
