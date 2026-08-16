@@ -154,6 +154,10 @@
         await window.db.from('messages').insert([{
           id: msg.id,
           author_id: msg.authorId,
+          // Requires an `author_name` text column on the Supabase `messages`
+          // table. Without it, names get lost on reload / other devices and
+          // fall back to the generic "Student" placeholder.
+          author_name: msg.authorName || null,
           text: msg.text || '',
           image_base64: msg.imageBase64 || null,
           file_data: msg.fileData || null,
@@ -235,6 +239,7 @@
           const formatted = {
             id: newMsg.id,
             authorId: newMsg.author_id,
+            authorName: newMsg.author_name || null,
             text: newMsg.text,
             imageBase64: newMsg.image_base64,
             fileData: newMsg.file_data,
@@ -297,6 +302,7 @@
         state.messages = msgData.map(m => ({
           id: m.id,
           authorId: m.author_id,
+          authorName: m.author_name || null,
           text: m.text,
           imageBase64: m.image_base64,
           fileData: m.file_data,

@@ -94,12 +94,12 @@
           </div>
         ` : ''}
 
-        <!-- Chat Container: no fixed height / no internal scrollbar —
-             the page scrolls normally like the rest of the app. -->
-        <div class="bg-slate-900/80 rounded-2xl border border-slate-800 shadow-xl flex flex-col">
+        <!-- Chat Container: fixed height with its own internal scrollbar —
+             the page itself no longer scrolls; only the message list does. -->
+        <div class="bg-slate-900/80 rounded-2xl border border-slate-800 shadow-xl flex flex-col h-[70vh] max-h-[720px] min-h-[420px]">
 
           <!-- Message List -->
-          <div id="chat-messages-list" class="p-3">
+          <div id="chat-messages-list" class="p-3 flex-1 overflow-y-auto">
             ${messages.length === 0 ? `
               <div class="flex flex-col items-center justify-center text-center p-8 text-slate-500">
                 <div class="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center text-2xl mb-2">💬</div>
@@ -125,7 +125,7 @@
               const showHeader = !sameSenderAsPrev;
               const rowSpacing = showHeader ? (idx === 0 ? '' : 'mt-3') : 'mt-0.5';
 
-              const canDelete = !!(isMe || (user && user.isAdmin));
+              const canDelete = !!isMe; // owner-only — admins can no longer delete others' messages
 
               const reactions = msg.reactions || {};
               const reactionEntries = Object.keys(reactions).filter(e => (reactions[e] || []).length > 0);
@@ -201,7 +201,7 @@
           </div>
 
           <!-- Input Footer -->
-          <div class="p-2.5 border-t border-slate-800 bg-slate-900/50 rounded-b-2xl sticky bottom-0">
+          <div class="p-2.5 border-t border-slate-800 bg-slate-900/50 rounded-b-2xl shrink-0">
             <div class="flex items-center gap-2">
 
               <!-- Attachment Button -->
@@ -232,6 +232,11 @@
     `;
 
     ensureGlobalCloser();
+
+    // Keep the message list scrolled to the latest message on every render
+    // (initial load, new message, reaction, pin, delete, etc).
+    const msgList = el('chat-messages-list');
+    if (msgList) msgList.scrollTop = msgList.scrollHeight;
 
     const sendBtn = el('chat-send-btn');
     const input = el('chat-input');
@@ -322,7 +327,7 @@
       });
     });
 
-    // Delete — from inside the menu (own messages, or any message if admin)
+    // Delete — from inside the menu (message owner only)
     document.querySelectorAll('.menu-delete').forEach(b => {
       b.addEventListener('click', async (e) => {
         e.stopPropagation();
@@ -399,7 +404,8 @@
       }
 
       render();
-      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+      const list = el('chat-messages-list');
+      if (list) list.scrollTop = list.scrollHeight;
     }
 
     if (sendBtn) sendBtn.addEventListener('click', handleSend);
