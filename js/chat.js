@@ -108,37 +108,7 @@
                       </div>
                     ` : (msg.isPinned ? `<div class="px-1 mb-0.5"><span class="text-[10px] text-amber-400">📌 Pinned</span></div>` : '')}
 
-                    <div class="relative p-2.5 rounded-2xl text-sm w-fit max-w-full ${isMe ? 'bg-brand-600 text-white rounded-tr-none' : 'bg-slate-800 text-slate-200 rounded-tl-none border border-slate-700/60'} shadow-sm leading-relaxed whitespace-pre-wrap break-words">
-                      
-                      <!-- Replying Context -->
-                      ${parentMsg ? `
-                        <div class="mb-1.5 p-1.5 rounded-lg bg-black/20 border-l-2 border-brand-400 text-xs opacity-85">
-                          <span class="font-bold block text-[10px] text-brand-200">Replying to message:</span>
-                          <span class="line-clamp-1">${UI.ESC ? UI.ESC(parentMsg.text) : parentMsg.text}</span>
-                        </div>
-                      ` : ''}
-
-                      ${UI.ESC ? UI.ESC(msg.text || '') : (msg.text || '')}
-
-                      <!-- Attached Image -->
-                      ${msg.imageBase64 && typeof msg.imageBase64 === 'string' && msg.imageBase64.startsWith('data:image') ? `
-                        <img src="${msg.imageBase64}" class="mt-2 rounded-xl max-h-64 w-auto object-contain border border-black/20 block" />
-                      ` : ''}
-
-                      <!-- Attached File -->
-                      ${msg.fileData && msg.fileData.url ? `
-                        <a href="${msg.fileData.url}" download="${msg.fileData.name}" class="mt-2 flex items-center gap-2 p-1.5 rounded-xl bg-black/20 hover:bg-black/30 text-xs transition border border-white/10">
-                          <span class="text-base">📄</span>
-                          <span class="truncate max-w-[180px] font-medium">${msg.fileData.name}</span>
-                          <span class="text-[10px] opacity-70 shrink-0">⬇️ Download</span>
-                        </a>
-                      ` : ''}
-
-                      <!-- Action Buttons (Hover) -->
-                      <div class="absolute ${isMe ? '-left-16' : '-right-16'} top-1 hidden group-hover:flex items-center gap-1 bg-slate-800 border border-slate-700 rounded-lg p-1 shadow-lg z-10">
-                        <button class="btn-reply text-xs p-1 hover:bg-slate-700 rounded text-slate-300 cursor-pointer" data-id="${msg.id}" title="Reply">↩️</button>
-                        <button class="btn-pin text-xs p-1 hover:bg-slate-700 rounded text-slate-300 cursor-pointer" data-id="${msg.id}" title="Pin/Unpin">📌</button>
-                      </div>
+                    <div class="relative p-2.5 rounded-2xl text-sm w-fit max-w-full ${isMe ? 'bg-brand-600 text-white rounded-tr-none' : 'bg-slate-800 text-slate-200 rounded-tl-none border border-slate-700/60'} shadow-sm leading-relaxed">${parentMsg ? `<div class="mb-1.5 p-1.5 rounded-lg bg-black/20 border-l-2 border-brand-400 text-xs opacity-85"><span class="font-bold block text-[10px] text-brand-200">Replying to message:</span><span class="line-clamp-1">${UI.ESC ? UI.ESC(parentMsg.text) : parentMsg.text}</span></div>` : ''}${msg.text ? `<span class="block whitespace-pre-wrap break-words">${UI.ESC ? UI.ESC(msg.text) : msg.text}</span>` : ''}${msg.imageBase64 && typeof msg.imageBase64 === 'string' && msg.imageBase64.startsWith('data:image') ? `<img src="${msg.imageBase64}" class="mt-2 rounded-xl max-h-64 w-auto object-contain border border-black/20 block" />` : ''}${msg.fileData && msg.fileData.url ? `<a href="${msg.fileData.url}" download="${msg.fileData.name}" class="mt-2 flex items-center gap-2 p-1.5 rounded-xl bg-black/20 hover:bg-black/30 text-xs transition border border-white/10"><span class="text-base">📄</span><span class="truncate max-w-[180px] font-medium">${msg.fileData.name}</span><span class="text-[10px] opacity-70 shrink-0">⬇️ Download</span></a>` : ''}<div class="absolute ${isMe ? '-left-16' : '-right-16'} top-1 hidden group-hover:flex items-center gap-1 bg-slate-800 border border-slate-700 rounded-lg p-1 shadow-lg z-10"><button class="btn-reply text-xs p-1 hover:bg-slate-700 rounded text-slate-300 cursor-pointer" data-id="${msg.id}" title="Reply">↩️</button><button class="btn-pin text-xs p-1 hover:bg-slate-700 rounded text-slate-300 cursor-pointer" data-id="${msg.id}" title="Pin/Unpin">📌</button></div>
                     </div>
                   </div>
                 </div>
