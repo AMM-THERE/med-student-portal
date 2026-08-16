@@ -279,6 +279,7 @@
   function mountShell() {
     const STATE = getSTATE();
     const SET = getSET();
+    const AUTH = getAUTH();
     const prefs = (STATE.state && STATE.state.prefs) || {};
     // Delegate to MP_SETTINGS.applyTheme so 'system' is resolved the same
     // way here as it is inside the Settings modal, instead of this
@@ -289,6 +290,16 @@
     } else {
       document.documentElement.classList.toggle('dark', prefs.theme === 'dark');
     }
+
+    // If nobody is logged in yet, show the registration modal instead of
+    // silently falling through to the tab content. Without this check the
+    // app renders "Study Hub" (or whichever tab) for anonymous visitors
+    // with an empty sidebar/topbar and no way to sign up.
+    const hasUser = !!(STATE.state && STATE.state.currentUser);
+    if (!hasUser && AUTH.showRegistration) {
+      AUTH.showRegistration().then(() => renderAll());
+    }
+
     renderAll();
   }
 
