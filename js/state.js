@@ -183,6 +183,46 @@
     }
   }
 
+  /** Delete a message: local optimistic removal + best-effort Supabase sync. */
+  async function deleteMessage(msgId) {
+    const idx = state.messages.findIndex(m => m.id === msgId);
+    if (idx === -1) return;
+    state.messages.splice(idx, 1);
+    notify({ type: 'messages' });
+
+    if (window.db) {
+      try {
+        await window.db.from('messages').delete().eq('id', msgId);
+      } catch (err) {
+        console.error('Error deleting message from Supabase:', err);
+      }
+    }
+  }
+
+  /** Toggle an emoji reaction from the current user on a message. */
+  async function toggleReaction(msgId, emoji) {
+    const msg = state.messages.find(m => m.id === msgId);
+    if (!msg) return;
+    const uid = state.currentUser ? state.currentUser.id : 'guest';
+    msg.reactions = msg.reactions || {};
+    const arr = msg.reactions[emoji] || (msg.reactions[emoji] = []);
+    const at = arr.indexOf(uid);
+    if (at === -1) arr.push(uid); else arr.splice(at, 1);
+    if (arr.length === 0) delete msg.reactions[emoji];
+    notify({ type: 'messages' });
+
+    // Best-effort: only persists across devices if a `reactions` column
+    // exists on the Supabase `messages` table. Fails silently otherwise —
+    // reactions still work locally on this device either way.
+    if (window.db) {
+      try {
+        await window.db.from('messages').update({ reactions: msg.reactions }).eq('id', msgId);
+      } catch (err) {
+        console.warn('Could not sync reaction to Supabase (does the `reactions` column exist?):', err);
+      }
+    }
+  }
+
   function setupRealtime() {
     if (!window.db) return;
     
@@ -215,6 +255,17 @@
           const index = state.messages.findIndex(m => m.id === updated.id);
           if (index !== -1) {
             state.messages[index].isPinned = updated.is_pinned;
+            if (updated.reactions) state.messages[index].reactions = updated.reactions;
+            notify({ type: 'messages' });
+            if (global.MP_CHAT && state.currentTab === 'chat') {
+              global.MP_CHAT.render();
+            }
+          }
+        } else if (payload.eventType === 'DELETE') {
+          const oldMsg = payload.old;
+          const index = state.messages.findIndex(m => m.id === oldMsg.id);
+          if (index !== -1) {
+            state.messages.splice(index, 1);
             notify({ type: 'messages' });
             if (global.MP_CHAT && state.currentTab === 'chat') {
               global.MP_CHAT.render();
@@ -252,6 +303,7 @@
           replyTo: m.reply_to,
           isPinned: m.is_pinned,
           anonymous: m.anonymous,
+          reactions: m.reactions || {},
           createdAt: Number(m.created_at)
         }));
       }
@@ -295,6 +347,8 @@
     addLecture,
     addMessage,
     togglePinMessage,
+    deleteMessage,
+    toggleReaction,
     loadFromDatabase
   };
 
