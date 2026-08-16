@@ -260,6 +260,18 @@
       return { error: 'No questions to save.' };
     }
 
+    // quizzes.created_by is a foreign key into users(id) — make sure this
+    // user's row actually exists in Supabase before we try to reference it,
+    // and surface the real reason if it doesn't (e.g. an RLS policy on the
+    // `users` table blocking the upsert), instead of only ever seeing the
+    // generic foreign-key error below.
+    if (state.currentUser) {
+      const syncErr = await ensureUserSynced(state.currentUser);
+      if (syncErr) {
+        return { error: 'Could not verify your account in the database (' + syncErr + '). This likely means Row-Level Security on the `users` table is blocking inserts/updates — check its policies in Supabase.' };
+      }
+    }
+
     try {
       const { data: quizRow, error: quizErr } = await window.db
         .from('quizzes')
@@ -453,16 +465,23 @@
    * heals that automatically — a no-op if the row is already there.
    */
   async function ensureUserSynced(user) {
-    if (!user || !window.db) return;
+    if (!user) return 'No logged-in user.';
+    if (!window.db) return 'Supabase client is not available.';
     try {
-      await window.db.from('users').upsert([{
+      const { error } = await window.db.from('users').upsert([{
         id: user.id,
         full_name: user.fullName,
         username: user.username,
         email: user.email
       }], { onConflict: 'id' });
+      if (error) {
+        console.warn('Could not sync current user to Supabase (quizzes/attempts/bookmarks may fail until this succeeds):', error);
+        return error.message || error.hint || error.details || 'Unknown error syncing user to Supabase.';
+      }
+      return null;
     } catch (err) {
       console.warn('Could not sync current user to Supabase (quizzes/attempts/bookmarks may fail until this succeeds):', err);
+      return (err && err.message) || String(err);
     }
   }
 
