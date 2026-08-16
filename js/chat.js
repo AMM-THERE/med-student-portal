@@ -13,17 +13,9 @@
   let attachedFile = null;
   let openMenuId = null; // id of the message whose action menu is open
 
-  // Consecutive messages from the same sender within this window are
-  // grouped together (avatar/name/time shown only once) instead of each
-  // repeating a full header — this is what was making short back-to-back
-  // messages like "hi" take up so much vertical space.
   const GROUP_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
-
-  // Quick-pick reaction set, WhatsApp-style.
   const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 
-  // Close any open message menu on an outside click. Attached once,
-  // not per-render, so it doesn't pile up duplicate listeners.
   let globalCloserAttached = false;
   function ensureGlobalCloser() {
     if (globalCloserAttached) return;
@@ -36,12 +28,6 @@
     });
   }
 
-  /** Resolve a display name for a message's author WITHOUT ever
-   *  falling back to the current viewer's own name — that was the
-   *  bug making every other student's message look like it came
-   *  from you. Prefer the name captured on the message itself at
-   *  send time; fall back to the shared users list; otherwise show
-   *  a neutral placeholder. */
   function resolveAuthorName(msg, st, isMe, user) {
     if (msg.anonymous) return 'Anonymous Student';
     if (isMe) return user ? user.fullName : 'You';
@@ -55,6 +41,18 @@
     const view = el('view');
     if (!view) return;
 
+    // Capture the message list's scroll state BEFORE we tear down and
+    // rebuild the DOM. Re-renders happen for lots of reasons that have
+    // nothing to do with a new message arriving — opening the ⋮ menu,
+    // picking a reaction, pinning, canceling a reply — and none of those
+    // should move the view. Only snap to the bottom if the user was
+    // already there (or this is the very first render of the tab).
+    const prevList = el('chat-messages-list');
+    const prevScrollTop = prevList ? prevList.scrollTop : null;
+    const wasNearBottom = prevList
+      ? (prevList.scrollHeight - prevList.scrollTop - prevList.clientHeight) < 80
+      : true; // no list yet — first time opening Community, start at the bottom
+
     const STATE = getSTATE();
     const UI = getUI();
     const st = STATE.state || {};
@@ -64,11 +62,16 @@
 
     const pinnedMessages = messages.filter(m => m.isPinned);
 
+    // Fixed height instead of a vh guess: viewport minus the sticky topbar
+    // (4rem) and the page shell's own padding (main's py-6 + pb-32 = 9.5rem
+    // bottom, 1.5rem top → 11rem total, +4rem topbar = 15rem). This makes
+    // the Community view exactly fill the visible area below the topbar,
+    // so the outer page can never scroll — only #chat-messages-list can.
     view.innerHTML = `
-      <div class="max-w-5xl mx-auto space-y-3 pb-8 animate-fade-in">
+      <div class="max-w-5xl mx-auto flex flex-col gap-3 h-[calc(100vh-15rem)] min-h-[420px] animate-fade-in">
 
         <!-- Header -->
-        <div class="bg-slate-800/40 p-4 rounded-2xl border border-slate-700/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="shrink-0 bg-slate-800/40 p-4 rounded-2xl border border-slate-700/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h1 class="text-2xl font-black text-slate-100 tracking-tight">Community</h1>
             <p class="text-sm text-slate-400 mt-0.5">Share notes, MCQs, and discuss with your batch peers in real-time.</p>
@@ -84,7 +87,7 @@
 
         <!-- Pinned Messages Banner -->
         ${pinnedMessages.length > 0 ? `
-          <div class="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-2.5 px-3 flex items-center justify-between text-xs text-amber-200 gap-3">
+          <div class="shrink-0 bg-amber-500/10 border border-amber-500/30 rounded-2xl p-2.5 px-3 flex items-center justify-between text-xs text-amber-200 gap-3">
             <div class="flex items-center gap-2 overflow-hidden">
               <span class="text-base shrink-0">📌</span>
               <span class="font-bold shrink-0">Pinned:</span>
@@ -94,12 +97,13 @@
           </div>
         ` : ''}
 
-        <!-- Chat Container: fixed height with its own internal scrollbar —
-             the page itself no longer scrolls; only the message list does. -->
-        <div class="bg-slate-900/80 rounded-2xl border border-slate-800 shadow-xl flex flex-col h-[70vh] max-h-[720px] min-h-[420px]">
+        <!-- Chat Container: fills whatever space is left in the flex
+             column above (flex-1 min-h-0) — the page itself can never
+             scroll; only the message list below does. -->
+        <div class="flex-1 min-h-0 bg-slate-900/80 rounded-2xl border border-slate-800 shadow-xl flex flex-col">
 
           <!-- Message List -->
-          <div id="chat-messages-list" class="p-3 flex-1 overflow-y-auto">
+          <div id="chat-messages-list" class="p-3 flex-1 min-h-0 overflow-y-auto">
             ${messages.length === 0 ? `
               <div class="flex flex-col items-center justify-center text-center p-8 text-slate-500">
                 <div class="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center text-2xl mb-2">💬</div>
@@ -112,9 +116,6 @@
 
               const parentMsg = msg.replyTo ? messages.find(m => m.id === msg.replyTo) : null;
 
-              // Group with the previous message if it's from the same
-              // sender (same author, same anonymous state), has no reply
-              // context of its own, and arrived within the group window.
               const prev = messages[idx - 1];
               const sameSenderAsPrev = !!prev
                 && !msg.replyTo
@@ -125,7 +126,7 @@
               const showHeader = !sameSenderAsPrev;
               const rowSpacing = showHeader ? (idx === 0 ? '' : 'mt-3') : 'mt-0.5';
 
-              const canDelete = !!isMe; // owner-only — admins can no longer delete others' messages
+              const canDelete = !!isMe;
 
               const reactions = msg.reactions || {};
               const reactionEntries = Object.keys(reactions).filter(e => (reactions[e] || []).length > 0);
@@ -183,7 +184,7 @@
           </div>
 
           <!-- Active Reply Bar -->
-          <div id="reply-preview-bar" class="${currentReplyTo ? 'flex' : 'hidden'} items-center justify-between px-3 py-1.5 bg-slate-800/90 border-t border-slate-700 text-xs text-slate-300">
+          <div id="reply-preview-bar" class="shrink-0 ${currentReplyTo ? 'flex' : 'hidden'} items-center justify-between px-3 py-1.5 bg-slate-800/90 border-t border-slate-700 text-xs text-slate-300">
             <div class="flex items-center gap-2 truncate">
               <span class="text-brand-400 font-bold">↩️ Replying to:</span>
               <span id="reply-preview-text" class="truncate text-slate-400"></span>
@@ -192,7 +193,7 @@
           </div>
 
           <!-- Active Attachment Preview -->
-          <div id="file-preview-bar" class="${attachedFile ? 'flex' : 'hidden'} items-center justify-between px-3 py-1.5 bg-slate-800/90 border-t border-slate-700 text-xs text-slate-300">
+          <div id="file-preview-bar" class="shrink-0 ${attachedFile ? 'flex' : 'hidden'} items-center justify-between px-3 py-1.5 bg-slate-800/90 border-t border-slate-700 text-xs text-slate-300">
             <div class="flex items-center gap-2 truncate">
               <span>📎 Attached:</span>
               <span id="file-preview-name" class="font-bold text-brand-400 truncate"></span>
@@ -233,17 +234,24 @@
 
     ensureGlobalCloser();
 
-    // Keep the message list scrolled to the latest message on every render
-    // (initial load, new message, reaction, pin, delete, etc).
+    // Only snap to the bottom if the user was already down there (or this
+    // is the first render). Otherwise restore exactly where they were —
+    // this is what stops opening the ⋮ menu, reacting, pinning, etc. from
+    // teleporting the view down to the latest message.
     const msgList = el('chat-messages-list');
-    if (msgList) msgList.scrollTop = msgList.scrollHeight;
+    if (msgList) {
+      if (wasNearBottom) {
+        msgList.scrollTop = msgList.scrollHeight;
+      } else if (prevScrollTop !== null) {
+        msgList.scrollTop = prevScrollTop;
+      }
+    }
 
     const sendBtn = el('chat-send-btn');
     const input = el('chat-input');
     const anonCheck = el('chat-anon-check');
     const fileInput = el('chat-file-input');
 
-    // Handle File Pick
     if (fileInput) {
       fileInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
@@ -264,7 +272,6 @@
       });
     }
 
-    // Cancel Reply & Cancel File
     const cancelReplyBtn = el('cancel-reply-btn');
     if (cancelReplyBtn) {
       cancelReplyBtn.addEventListener('click', () => {
@@ -282,7 +289,6 @@
       });
     }
 
-    // Message action menu (⋮): toggle open/closed per message
     document.querySelectorAll('.btn-more').forEach(b => {
       b.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -292,7 +298,6 @@
       });
     });
 
-    // Reply — from inside the menu
     document.querySelectorAll('.menu-reply').forEach(b => {
       b.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -314,7 +319,6 @@
       });
     });
 
-    // Pin / Unpin — from inside the menu
     document.querySelectorAll('.menu-pin').forEach(b => {
       b.addEventListener('click', async (e) => {
         e.stopPropagation();
@@ -327,7 +331,6 @@
       });
     });
 
-    // Delete — from inside the menu (message owner only)
     document.querySelectorAll('.menu-delete').forEach(b => {
       b.addEventListener('click', async (e) => {
         e.stopPropagation();
@@ -340,7 +343,6 @@
       });
     });
 
-    // Reaction pick — from inside the menu
     document.querySelectorAll('.reaction-pick').forEach(b => {
       b.addEventListener('click', async (e) => {
         e.stopPropagation();
@@ -352,7 +354,6 @@
       });
     });
 
-    // Reaction pill — tapping an existing reaction toggles yours too
     document.querySelectorAll('.reaction-pill').forEach(b => {
       b.addEventListener('click', async (e) => {
         e.stopPropagation();
@@ -383,9 +384,6 @@
       const msg = {
         id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
         authorId: user ? user.id : 'guest',
-        // Captured locally at send time so the sender's real name is
-        // always known immediately — never depends on (or falls back
-        // to) another device's users list being loaded yet.
         authorName: user ? user.fullName : 'Guest',
         text: text,
         imageBase64: imageBase64,
