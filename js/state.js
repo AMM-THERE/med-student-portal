@@ -23,14 +23,6 @@
     }
   }
 
-  /**
-   * Load saved preferences (theme, font scale, default-anonymous) from
-   * localStorage. This used to be missing entirely, which meant `state.prefs`
-   * always started at a hardcoded default — so navigation.js's mountShell()
-   * would stomp the user's saved dark-mode choice back to light/system on
-   * every page refresh. Reading it here, synchronously, before mountShell
-   * ever runs, fixes that at the source.
-   */
   function getSavedPrefs() {
     try {
       const CFG = global.MP_CONFIG;
@@ -87,7 +79,6 @@
     }
   }
 
-  /** Persist the logged-in user to state + localStorage session key. */
   function loginAs(user) {
     if (!user) return;
     state.currentUser = user;
@@ -98,7 +89,6 @@
     notify({ type: 'auth', user });
   }
 
-  /** Clear the session. */
   function logout() {
     state.currentUser = null;
     const CFG = global.MP_CONFIG;
@@ -108,7 +98,6 @@
     notify({ type: 'auth', user: null });
   }
 
-  /** Register a new user: local optimistic update + best-effort Supabase sync. */
   async function addUser(user) {
     if (!user) return;
     const exists = state.users.some(u => u.id === user.id);
@@ -131,7 +120,6 @@
     }
   }
 
-  /** Post a new lecture: local optimistic update + best-effort Supabase sync. */
   async function addLecture(lecture) {
     if (!lecture) return;
     const exists = state.lectures.some(l => l.id === lecture.id);
@@ -158,7 +146,6 @@
     }
   }
 
-  /** Delete a lecture (admin-only, enforced by the caller in lectures.js): local optimistic removal + best-effort Supabase sync. */
   async function deleteLecture(lecId) {
     const idx = state.lectures.findIndex(l => l.id === lecId);
     if (idx === -1) return null;
@@ -180,34 +167,57 @@
     return null;
   }
 
+  /**
+   * Insert a chat message into Supabase. Hardened against one specific
+   * failure mode that just bit us in production: if the payload includes a
+   * column (like `is_deleted`) that doesn't exist yet on the `messages`
+   * table, PostgREST rejects the ENTIRE insert — not just that field — so
+   * the message silently never gets saved for anyone. This retries once
+   * without the optional column instead of losing the message outright.
+   * Run the SQL migration (see chat with the user) to add `is_deleted` /
+   * `deleted_at` properly — this fallback is a safety net, not a substitute.
+   */
   async function addMessage(msg) {
-    // Local optimistic update
     const exists = state.messages.some(m => m.id === msg.id);
     if (!exists) {
       state.messages.push(msg);
       notify({ type: 'messages' });
     }
 
-    if (window.db) {
-      try {
-        await window.db.from('messages').insert([{
-          id: msg.id,
-          author_id: msg.authorId,
-          author_name: msg.authorName || null,
-          text: msg.text || '',
-          image_base64: msg.imageBase64 || null,
-          file_data: msg.fileData || null,
-          reply_to: msg.replyTo || null,
-          is_pinned: !!msg.isPinned,
-          anonymous: !!msg.anonymous,
-          // Requires an `is_deleted` boolean column (default false) on the
-          // Supabase `messages` table — see deleteMessage()/hardDeleteMessage()
-          // below. If that column doesn't exist yet, add it or this insert
-          // will fail with an "unknown column" error.
-          is_deleted: false,
-          created_at: msg.createdAt
-        }]);
-      } catch (err) {
+    if (!window.db) return;
+
+    const payload = {
+      id: msg.id,
+      author_id: msg.authorId,
+      author_name: msg.authorName || null,
+      text: msg.text || '',
+      image_base64: msg.imageBase64 || null,
+      file_data: msg.fileData || null,
+      reply_to: msg.replyTo || null,
+      is_pinned: !!msg.isPinned,
+      anonymous: !!msg.anonymous,
+      is_deleted: false,
+      created_at: msg.createdAt
+    };
+
+    try {
+      const { error } = await window.db.from('messages').insert([payload]);
+      if (error) throw error;
+    } catch (err) {
+      const errText = (err && (err.message || err.details || err.hint)) || String(err);
+      const looksLikeMissingColumn = /column/i.test(errText) && /is_deleted/i.test(errText);
+
+      if (looksLikeMissingColumn) {
+        console.warn('[state] `is_deleted` column missing on Supabase `messages` table — retrying insert without it. Run: alter table public.messages add column if not exists is_deleted boolean not null default false, add column if not exists deleted_at bigint;');
+        try {
+          const fallbackPayload = { ...payload };
+          delete fallbackPayload.is_deleted;
+          const { error: retryErr } = await window.db.from('messages').insert([fallbackPayload]);
+          if (retryErr) console.error('Error inserting message into Supabase (fallback also failed):', retryErr);
+        } catch (retryEx) {
+          console.error('Error inserting message into Supabase (fallback also failed):', retryEx);
+        }
+      } else {
         console.error('Error inserting message into Supabase:', err);
       }
     }
@@ -228,16 +238,6 @@
     }
   }
 
-  /**
-   * Soft-delete a message. Content is kept in place (so admins can still
-   * audit what was said and who deleted it) but flagged `isDeleted` so
-   * chat.js can hide the real content from non-admins and show a
-   * "This message was deleted" placeholder instead. A deleted message is
-   * also automatically unpinned — a pinned "deleted" bubble would be
-   * confusing in the pinned banner.
-   *
-   * Permission (own message vs admin) is enforced by the caller in chat.js.
-   */
   async function deleteMessage(msgId) {
     const msg = state.messages.find(m => m.id === msgId);
     if (!msg) return;
@@ -248,9 +248,6 @@
 
     if (window.db) {
       try {
-        // Requires `is_deleted` (bool) + `deleted_at` (int8) columns on the
-        // Supabase `messages` table. Falls back to a local-only soft delete
-        // on this device if those columns don't exist yet.
         await window.db.from('messages')
           .update({ is_deleted: true, deleted_at: msg.deletedAt, is_pinned: false })
           .eq('id', msgId);
@@ -260,11 +257,6 @@
     }
   }
 
-  /**
-   * Permanently remove a message that has already been soft-deleted.
-   * Admin-only, enforced by the caller in chat.js — this is the "I don't
-   * want to see this deleted message anymore" action.
-   */
   async function hardDeleteMessage(msgId) {
     const idx = state.messages.findIndex(m => m.id === msgId);
     if (idx === -1) return;
@@ -281,7 +273,6 @@
     }
   }
 
-  /** Toggle an emoji reaction from the current user on a message. */
   async function toggleReaction(msgId, emoji) {
     const msg = state.messages.find(m => m.id === msgId);
     if (!msg) return;
@@ -302,13 +293,6 @@
     }
   }
 
-  /**
-   * Create a quiz + its questions in Supabase (requires the `quizzes` and
-   * `quiz_questions` tables). questions is an array of:
-   *   { text, options: { A, B, C, D }, correct: 'A'|'B'|'C'|'D', explanation }
-   * Returns the created quiz object (with questions attached) or null on
-   * failure.
-   */
   async function createQuiz({ title, description, subject, year, questions }) {
     if (!window.db) {
       console.error('Supabase not available — cannot create quiz.');
@@ -396,12 +380,6 @@
     }
   }
 
-  /**
-   * Delete a quiz (admin-only, enforced by the caller in quiz.js): local
-   * optimistic removal + best-effort Supabase sync. Child questions are
-   * deleted explicitly first in case the `quiz_questions.quiz_id` foreign
-   * key doesn't have ON DELETE CASCADE set up.
-   */
   async function deleteQuiz(quizId) {
     const idx = state.quizzes.findIndex(q => q.id === quizId);
     if (idx === -1) return null;
@@ -424,7 +402,6 @@
     return null;
   }
 
-  /** Record a completed quiz attempt (score out of totalQuestions). */
   async function submitQuizAttempt(quizId, score, totalQuestions) {
     const uid = state.currentUser ? state.currentUser.id : null;
     const local = {
@@ -452,7 +429,6 @@
     }
   }
 
-  /** Toggle a "save for later" bookmark on a quiz question for the current user. */
   async function toggleSavedQuestion(questionId) {
     const uid = state.currentUser ? state.currentUser.id : null;
     if (!uid) return;
@@ -540,15 +516,6 @@
       .subscribe();
   }
 
-  /**
-   * Ensure the given user's row exists in Supabase's `users` table.
-   * Several tables (quizzes.created_by, quiz_attempts.user_id,
-   * saved_questions.user_id) have a foreign key on users(id). If a user's
-   * row never made it into Supabase (e.g. they registered before this sync
-   * existed, or the original insert failed), every one of those features
-   * fails with a foreign-key violation. Upserting here on every app load
-   * heals that automatically — a no-op if the row is already there.
-   */
   async function ensureUserSynced(user) {
     if (!user) return 'No logged-in user.';
     if (!window.db) return 'Supabase client is not available.';
