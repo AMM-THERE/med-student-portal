@@ -90,6 +90,19 @@
     // Hero CTA → opens the same modal as the FAB
     const emptyBtn = v.querySelector('#empty-add-lecture');
     if (emptyBtn) emptyBtn.addEventListener('click', () => openAddLecture());
+
+    // Admin-only delete buttons on each lecture card
+    v.querySelectorAll('.btn-delete-lecture').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.id;
+        if (confirm('Delete this lecture? This cannot be undone.')) {
+          await STATE.deleteLecture(id);
+          UI.toast('Lecture deleted.', { variant: 'info' });
+          render();
+        }
+      });
+    });
   }
 
   function lectureCard(lec) {
@@ -104,6 +117,8 @@
     }).join('');
 
     const u = STATE.state.users.find(x => x.id === lec.addedBy);
+    const currentUser = STATE.state.currentUser;
+    const canDelete = !!(currentUser && currentUser.isAdmin);
     return `
       <article class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 shadow-sm hover:shadow-md transition">
         <div class="flex items-start justify-between gap-2 mb-2">
@@ -117,7 +132,10 @@
         <div class="flex flex-wrap gap-2 mb-3">${linksHtml || '<span class="text-xs text-slate-400">No resources</span>'}</div>
         <div class="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
           <span>Added ${UTIL.formatDate(lec.createdAt)}</span>
-          ${u ? `<span>by ${UI.ESC(u.fullName)} ${UI.yearBadge(u.year, { extraClass: 'ml-1' })}</span>` : ''}
+          <div class="flex items-center gap-2">
+            ${u ? `<span>by ${UI.ESC(u.fullName)} ${UI.yearBadge(u.year, { extraClass: 'ml-1' })}</span>` : ''}
+            ${canDelete ? `<button class="btn-delete-lecture p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30 transition" data-id="${lec.id}" title="Delete lecture">${UI.icon('trash', 'w-3.5 h-3.5')}</button>` : ''}
+          </div>
         </div>
       </article>
     `;

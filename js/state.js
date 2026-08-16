@@ -141,6 +141,22 @@
     }
   }
 
+  /** Delete a lecture (admin-only, enforced by the caller in lectures.js): local optimistic removal + best-effort Supabase sync. */
+  async function deleteLecture(lecId) {
+    const idx = state.lectures.findIndex(l => l.id === lecId);
+    if (idx === -1) return;
+    state.lectures.splice(idx, 1);
+    notify({ type: 'lectures' });
+
+    if (window.db) {
+      try {
+        await window.db.from('lectures').delete().eq('id', lecId);
+      } catch (err) {
+        console.error('Error deleting lecture from Supabase:', err);
+      }
+    }
+  }
+
   async function addMessage(msg) {
     // Local optimistic update
     const exists = state.messages.some(m => m.id === msg.id);
@@ -427,10 +443,35 @@
       .subscribe();
   }
 
+  /**
+   * Ensure the given user's row exists in Supabase's `users` table.
+   * Several tables (quizzes.created_by, quiz_attempts.user_id,
+   * saved_questions.user_id) have a foreign key on users(id). If a user's
+   * row never made it into Supabase (e.g. they registered before this sync
+   * existed, or the original insert failed), every one of those features
+   * fails with a foreign-key violation. Upserting here on every app load
+   * heals that automatically — a no-op if the row is already there.
+   */
+  async function ensureUserSynced(user) {
+    if (!user || !window.db) return;
+    try {
+      await window.db.from('users').upsert([{
+        id: user.id,
+        full_name: user.fullName,
+        username: user.username,
+        email: user.email
+      }], { onConflict: 'id' });
+    } catch (err) {
+      console.warn('Could not sync current user to Supabase (quizzes/attempts/bookmarks may fail until this succeeds):', err);
+    }
+  }
+
   async function loadFromDatabase() {
     state.currentUser = getSavedUser();
 
     if (!window.db) return;
+
+    await ensureUserSynced(state.currentUser);
 
     try {
       const { data: usersData } = await window.db.from('users').select('*');
@@ -571,6 +612,7 @@
     loginAs,
     logout,
     addLecture,
+    deleteLecture,
     addMessage,
     togglePinMessage,
     deleteMessage,
