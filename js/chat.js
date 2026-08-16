@@ -11,6 +11,12 @@
   let currentReplyTo = null;
   let attachedFile = null;
 
+  // Consecutive messages from the same sender within this window are
+  // grouped together (avatar/name/time shown only once) instead of each
+  // repeating a full header — this is what was making short back-to-back
+  // messages like "hi" take up so much vertical space.
+  const GROUP_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+
   function render() {
     const view = el('view');
     if (!view) return;
@@ -58,32 +64,49 @@
         <div class="bg-slate-900/80 rounded-2xl border border-slate-800 shadow-xl flex flex-col h-[560px]">
           
           <!-- Message List -->
-          <div id="chat-messages-list" class="flex-1 overflow-y-auto p-3 space-y-2">
+          <div id="chat-messages-list" class="flex-1 overflow-y-auto p-3">
             ${messages.length === 0 ? `
               <div class="h-full flex flex-col items-center justify-center text-center p-4 text-slate-500">
                 <div class="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center text-2xl mb-2">💬</div>
                 <p class="font-bold text-slate-300">No messages yet</p>
                 <p class="text-xs text-slate-500 mt-1">Be the first to start the conversation!</p>
               </div>
-            ` : messages.map(msg => {
+            ` : messages.map((msg, idx) => {
               const author = (st.users || []).find(u => u.id === msg.authorId) || { fullName: user ? user.fullName : 'Student' };
               const isMe = user && msg.authorId === user.id;
               const displayName = msg.anonymous ? 'Anonymous Student' : (isMe ? (user ? user.fullName : 'You') : author.fullName);
 
               const parentMsg = msg.replyTo ? messages.find(m => m.id === msg.replyTo) : null;
 
+              // Group with the previous message if it's from the same
+              // sender (same author, same anonymous state), has no reply
+              // context of its own, and arrived within the group window.
+              const prev = messages[idx - 1];
+              const sameSenderAsPrev = !!prev
+                && !msg.replyTo
+                && prev.anonymous === msg.anonymous
+                && (msg.anonymous || prev.authorId === msg.authorId)
+                && Math.abs((msg.createdAt || 0) - (prev.createdAt || 0)) < GROUP_WINDOW_MS;
+
+              const showHeader = !sameSenderAsPrev;
+              const rowSpacing = showHeader ? (idx === 0 ? '' : 'mt-3') : 'mt-0.5';
+
               return `
-                <div class="flex gap-2 ${isMe ? 'flex-row-reverse' : 'flex-row'} items-start group">
-                  <div class="w-7 h-7 rounded-full ${isMe ? 'bg-brand-600' : 'bg-slate-700'} text-white font-bold flex items-center justify-center text-xs shrink-0 shadow-sm mt-0.5">
-                    ${msg.anonymous ? '👤' : (displayName[0] || 'U')}
-                  </div>
+                <div class="flex gap-2 ${isMe ? 'flex-row-reverse' : 'flex-row'} items-start group ${rowSpacing}">
+                  ${showHeader ? `
+                    <div class="w-7 h-7 rounded-full ${isMe ? 'bg-brand-600' : 'bg-slate-700'} text-white font-bold flex items-center justify-center text-xs shrink-0 shadow-sm mt-0.5">
+                      ${msg.anonymous ? '👤' : (displayName[0] || 'U')}
+                    </div>
+                  ` : `<div class="w-7 shrink-0"></div>`}
 
                   <div class="max-w-[75%] ${isMe ? 'items-end' : 'items-start'} flex flex-col">
-                    <div class="flex items-center gap-2 mb-0.5 px-1">
-                      <span class="text-xs font-bold text-slate-300">${UI.ESC ? UI.ESC(displayName) : displayName}</span>
-                      <span class="text-[10px] text-slate-500">${msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}</span>
-                      ${msg.isPinned ? `<span class="text-[10px] text-amber-400">📌 Pinned</span>` : ''}
-                    </div>
+                    ${showHeader ? `
+                      <div class="flex items-center gap-2 mb-0.5 px-1">
+                        <span class="text-xs font-bold text-slate-300">${UI.ESC ? UI.ESC(displayName) : displayName}</span>
+                        <span class="text-[10px] text-slate-500">${msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}</span>
+                        ${msg.isPinned ? `<span class="text-[10px] text-amber-400">📌 Pinned</span>` : ''}
+                      </div>
+                    ` : (msg.isPinned ? `<div class="px-1 mb-0.5"><span class="text-[10px] text-amber-400">📌 Pinned</span></div>` : '')}
 
                     <div class="relative p-2.5 rounded-2xl text-sm w-fit max-w-full ${isMe ? 'bg-brand-600 text-white rounded-tr-none' : 'bg-slate-800 text-slate-200 rounded-tl-none border border-slate-700/60'} shadow-sm leading-relaxed whitespace-pre-wrap break-words">
                       
