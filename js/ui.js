@@ -20,8 +20,21 @@
   /** Year badge — number inside a colored chip: [1], [2], ... or [I] for Intern. */
   function yearBadge(year, opts) {
     opts = opts || {};
+
+    // Guard against undefined/null/numeric year values (e.g. a lecture or
+    // quiz author with no year set, or a caller passing a bare number).
+    // Without this, `year.replace(...)` below throws
+    // "Cannot read properties of undefined (reading 'replace')".
+    if (year === undefined || year === null) year = '';
+    year = String(year);
+    if (year && !year.startsWith('Year') && year !== 'Intern') {
+      // Numeric-only values like "1" become "Year 1" so they still match
+      // YEAR_COLORS and render a sensible label.
+      year = /^\d+$/.test(year) ? `Year ${year}` : year;
+    }
+
     const palette = YEAR_COLORS[year] || { bg: 'bg-slate-100', text: 'text-slate-700', darkBg: 'dark:bg-slate-800', darkText: 'dark:text-slate-300' };
-    const label = year === 'Intern' ? 'I' : String(year.replace('Year ', ''));
+    const label = year === 'Intern' ? 'I' : (year ? year.replace('Year ', '') : '?');
     const titleAttr = opts.title ? ` title="${ESC(opts.title)}"` : '';
     const extra = opts.extraClass ? ' ' + opts.extraClass : '';
     return `<span class="inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 rounded-md text-[11px] font-bold ${palette.bg} ${palette.text} ${palette.darkBg} ${palette.darkText}${extra}"${titleAttr}>${ESC(label)}</span>`;

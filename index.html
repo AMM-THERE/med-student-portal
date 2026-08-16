@@ -28,18 +28,6 @@
               800: '#141A33',
               900: '#0B1020'
             },
-            brand: {
-              50:  '#F0F9FF',
-              100: '#E0F2FE',
-              200: '#BAE6FD',
-              300: '#7DD3FC',
-              400: '#38BDF8',
-              500: '#0EA5E9',
-              600: '#0284C7',
-              700: '#0369A1',
-              800: '#075985',
-              900: '#0C4A6E'
-            },
             cream: {
               DEFAULT: '#FAF7F2',
               50:  '#FDFCF8',
@@ -83,18 +71,6 @@
               800: '#5C3F0A',
               900: '#3A2706'
             },
-            success: {
-              50:  '#ECFDF5',
-              100: '#D1FAE5',
-              200: '#A7F3D0',
-              300: '#6EE7B7',
-              400: '#34D399',
-              500: '#10B981',
-              600: '#059669',
-              700: '#047857',
-              800: '#065F46',
-              900: '#064E3B'
-            },
             violet: {
               50:  '#EFEAFF',
               100: '#DCD3FF',
@@ -130,6 +106,21 @@
               700: '#5F1F2C',
               800: '#3D121B',
               900: '#22080D'
+            },
+            /* Alias so bg-brand-*, text-brand-*, border-brand-* used across
+               chat.js / lectures.js / quiz.js / settings.js / auth.js resolve
+               to the same palette as "mint" (the app's accent color). */
+            brand: {
+              50:  '#E9FBF1',
+              100: '#CFF7E1',
+              200: '#A4F0C9',
+              300: '#7CF0BD',
+              400: '#5DE5AB',
+              500: '#3DDC97',
+              600: '#25B578',
+              700: '#1A8E5C',
+              800: '#126844',
+              900: '#0A452C'
             }
           },
           fontFamily: {
@@ -141,6 +132,7 @@
             'glow-mint':   '0 10px 30px -10px rgba(61, 220, 151, 0.55)',
             'glow-mint-l': '0 14px 40px -10px rgba(61, 220, 151, 0.75)',
             'glow-coral':  '0 10px 30px -10px rgba(255, 122, 107, 0.5)',
+            'glow':        '0 10px 30px -10px rgba(61, 220, 151, 0.55)',
             'soft':        '0 1px 2px rgba(11,16,32,0.06), 0 8px 24px -12px rgba(11,16,32,0.18)',
             'soft-ink':    '0 1px 2px rgba(11,16,32,0.08), 0 12px 32px -16px rgba(11,16,32,0.35)',
             'inset-line':  'inset 0 0 0 1px rgba(255,255,255,0.06)'
@@ -151,6 +143,7 @@
             'hero-coral':  'linear-gradient(135deg, #FFF1EF 0%, #FFDFDA 50%, #FEF7E2 100%)',
             'hero-violet': 'linear-gradient(135deg, #EFEAFF 0%, #DCD3FF 50%, #FAF7F2 100%)',
             'mint-grad':   'linear-gradient(135deg, #3DDC97 0%, #25B578 100%)',
+            'brand-grad':  'linear-gradient(135deg, #3DDC97 0%, #25B578 100%)',
             'coral-grad':  'linear-gradient(135deg, #FF7A6B 0%, #E45F50 100%)',
             'violet-grad': 'linear-gradient(135deg, #9B8CFF 0%, #634FF0 100%)',
             'amber-grad':  'linear-gradient(135deg, #F2C14E 0%, #E0A82B 100%)',
@@ -231,10 +224,18 @@
       justify-content: center !important;
       padding: 1rem !important;
     }
-    #modal-root > div > div, 
+    #modal-root > div > div,
     #modal-root form {
       max-height: 85vh !important;
       overflow-y: auto !important;
+    }
+    *::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    *::-webkit-scrollbar-thumb {
+      background: rgba(100, 116, 139, 0.35);
+      border-radius: 4px;
     }
   </style>
 
