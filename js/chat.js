@@ -173,7 +173,7 @@
                       </div>
                     ` : (msg.isPinned ? `<div class="px-1 mb-0.5"><span class="text-[10px] text-amber-400">📌 Pinned</span></div>` : '')}
 
-                    <div class="relative p-2.5 rounded-2xl text-sm w-fit max-w-full ${isMe ? 'bg-brand-600 text-white rounded-tr-none' : 'bg-slate-800 text-slate-200 rounded-tl-none border border-slate-700/60'} shadow-sm leading-relaxed">${parentMsg ? `<div class="mb-1.5 p-1.5 rounded-lg bg-black/20 border-l-2 border-brand-400 text-xs opacity-85"><span class="font-bold block text-[10px] text-brand-200">Replying to message:</span><span class="line-clamp-1">${UI.ESC ? UI.ESC(parentMsg.text) : parentMsg.text}</span></div>` : ''}${msg.text ? `<span class="block whitespace-pre-wrap break-words">${UI.ESC ? UI.ESC(msg.text) : msg.text}</span>` : ''}${msg.imageBase64 && typeof msg.imageBase64 === 'string' && msg.imageBase64.startsWith('data:image') ? `<img src="${msg.imageBase64}" class="mt-2 rounded-xl max-h-64 w-auto object-contain border border-black/20 block" />` : ''}${msg.fileData && msg.fileData.url ? `<a href="${msg.fileData.url}" download="${msg.fileData.name}" class="mt-2 flex items-center gap-2 p-1.5 rounded-xl bg-black/20 hover:bg-black/30 text-xs transition border border-white/10"><span class="text-base">📄</span><span class="truncate max-w-[180px] font-medium">${msg.fileData.name}</span><span class="text-[10px] opacity-70 shrink-0">⬇️ Download</span></a>` : ''}</div>
+                    <div class="relative p-2.5 rounded-2xl text-sm w-fit max-w-full ${isMe ? 'bg-brand-600 text-white rounded-tr-none' : 'bg-slate-800 text-slate-200 rounded-tl-none border border-slate-700/60'} shadow-sm leading-relaxed">${parentMsg ? `<div class="mb-1.5 p-1.5 rounded-lg bg-black/20 border-l-2 border-brand-400 text-xs opacity-85"><span class="font-bold block text-[10px] text-brand-200">Replying to message:</span><span class="line-clamp-1">${UI.ESC ? UI.ESC(parentMsg.text) : parentMsg.text}</span></div>` : ''}${msg.text ? `<span class="block whitespace-pre-wrap break-words">${UI.ESC ? UI.ESC(msg.text) : msg.text}</span>` : ''}${msg.imageBase64 && typeof msg.imageBase64 === 'string' && msg.imageBase64.startsWith('data:image') ? `<img src="${msg.imageBase64}" class="chat-zoomable-img mt-2 rounded-xl max-h-64 w-auto object-contain border border-black/20 block cursor-zoom-in" />` : ''}${msg.fileData && msg.fileData.url ? `<a href="${msg.fileData.url}" download="${msg.fileData.name}" class="mt-2 flex items-center gap-2 p-1.5 rounded-xl bg-black/20 hover:bg-black/30 text-xs transition border border-white/10"><span class="text-base">📄</span><span class="truncate max-w-[180px] font-medium">${msg.fileData.name}</span><span class="text-[10px] opacity-70 shrink-0">⬇️ Download</span></a>` : ''}</div>
                     ${reactionsHtml}
                   </div>
 
@@ -233,6 +233,21 @@
     `;
 
     ensureGlobalCloser();
+
+    // Click a chat image to zoom it into the full-screen lightbox already
+    // defined in index.html (#lightbox / #lightbox-img) — it just never had
+    // anything wired up to open it before.
+    document.querySelectorAll('.chat-zoomable-img').forEach(img => {
+      img.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const lightbox = document.getElementById('lightbox');
+        const lightboxImg = document.getElementById('lightbox-img');
+        if (!lightbox || !lightboxImg) return;
+        lightboxImg.src = img.src;
+        lightbox.classList.remove('hidden');
+        lightbox.classList.add('flex');
+      });
+    });
 
     // Only snap to the bottom if the user was already down there (or this
     // is the first render). Otherwise restore exactly where they were —
