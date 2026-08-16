@@ -337,7 +337,7 @@
 
             <div>
               <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">Upload Quiz File (.csv, .xlsx, .xls)</label>
-              <input type="file" id="quiz-file-input" accept=".csv,.xlsx,.xls" class="w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-success-50 file:text-success-700 hover:file:bg-success-100" />
+              <input type="file" id="quiz-upload-file-input" accept=".csv,.xlsx,.xls" class="w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-success-50 file:text-success-700 hover:file:bg-success-100" />
               <p class="text-[11px] text-slate-500 mt-1">Expected columns: Question, 4 options, Correct Answer, and an optional Explanation column. English or Arabic headers both work.</p>
             </div>
 
@@ -366,7 +366,7 @@
     const closeBtn = el('close-quiz-modal');
     const cancelBtn = el('cancel-quiz-btn');
     const submitBtn = el('submit-quiz-btn');
-    const fileInput = el('quiz-file-input');
+    const fileInput = el('quiz-upload-file-input');
     const previewArea = el('quiz-preview-area');
 
     function closeModal() { modal.remove(); parsedUpload = null; }
