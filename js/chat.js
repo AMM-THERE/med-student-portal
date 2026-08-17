@@ -109,7 +109,7 @@
               </div>
             ` : messages.map((msg, idx) => {
               const isMe = user && msg.authorId === user.id;
-              const displayName = resolveAuthorName(msg, st, isMe, user);
+              const displayName = resolveAuthorName(msg, st, isMe, user, isAdminViewer);
               const isDeleted = !!msg.isDeleted;
 
               const parentMsg = msg.replyTo ? messages.find(m => m.id === msg.replyTo) : null;
