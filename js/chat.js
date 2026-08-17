@@ -28,8 +28,15 @@
     });
   }
 
-  function resolveAuthorName(msg, st, isMe, user) {
-    if (msg.anonymous) return 'Anonymous Student';
+  function resolveAuthorName(msg, st, isMe, user, isAdminViewer) {
+    if (msg.anonymous) {
+      if (!isAdminViewer) return 'Anonymous Student';
+      // Admins get to see who is really posting behind an anonymous message.
+      const realName = isMe
+        ? (user ? user.fullName : 'You')
+        : (msg.authorName || (((st.users || []).find(u => u.id === msg.authorId)) || {}).fullName || 'Unknown');
+      return `Anonymous Student (real: ${realName})`;
+    }
     if (isMe) return user ? user.fullName : 'You';
     if (msg.authorName) return msg.authorName;
     const found = (st.users || []).find(u => u.id === msg.authorId);
