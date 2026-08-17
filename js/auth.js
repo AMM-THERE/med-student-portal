@@ -101,7 +101,7 @@
             <div class="p-6 sm:p-7 bg-white dark:bg-slate-900 flex flex-col justify-between">
               <div>
                 <h2 class="text-xl font-bold text-slate-900 dark:text-slate-100">Create your account</h2>
-                <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 mb-4">Takes 20 seconds.</p>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 mb-4">Takes 20 seconds. Already registered? Enter the same email to sign back in.</p>
               </div>
 
               <form id="reg-form" class="grid grid-cols-1 sm:grid-cols-2 gap-3" novalidate>
@@ -157,17 +157,32 @@
         const academicId = String(data.get('academicId') || '').trim();
         const year       = String(data.get('year') || '').trim();
 
-        // Validation
+        if (!isValidEmail(email)) {
+          errEl.textContent = 'A valid academic email is required.';
+          errEl.classList.remove('hidden');
+          return;
+        }
+
+        // Returning user: this email is already registered — log them back
+        // into their existing account instead of blocking with "already
+        // exists". This is the app's stand-in for a real sign-in flow since
+        // there's no password/Supabase Auth in play.
+        const users = STATE.state.users;
+        const existingUser = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+        if (existingUser) {
+          STATE.loginAs(existingUser);
+          UI.toast('Welcome back, ' + existingUser.fullName.split(' ')[0] + '!', { variant: 'success' });
+          m.close();
+          resolve(existingUser);
+          return;
+        }
+
+        // New user — full validation
         const errs = [];
         if (!fullName) errs.push('Full name is required.');
         if (!username) errs.push('Display username is required.');
-        if (!isValidEmail(email)) errs.push('A valid academic email is required.');
         if (!academicId) errs.push('Academic ID/Code is required.');
         if (!year || !CFG.ACADEMIC_YEARS.includes(year)) errs.push('Please select an academic year.');
-
-        // Uniqueness
-        const users = STATE.state.users;
-        if (users.some(u => u.email.toLowerCase() === email.toLowerCase())) errs.push('An account already exists for that email.');
         if (users.some(u => u.username.toLowerCase() === username.toLowerCase())) errs.push('That display username is taken.');
 
         if (errs.length) {
@@ -202,10 +217,10 @@
   function logout() {
     STATE.logout();
     UI.toast('Signed out.', { variant: 'info' });
-    // Show registration again on next render
-    if (global.MP_APP && typeof global.MP_APP.boot === 'function') {
-      global.MP_APP.boot();
-    }
+    // Force a full reload so the app re-boots into the logged-out state.
+    // (The old code called global.MP_APP.boot(), which never existed —
+    // that's why sign-out looked like it did nothing.)
+    window.location.reload();
   }
 
   global.MP_AUTH = { showRegistration, logout, isAdminEmail, isValidEmail };
