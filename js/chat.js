@@ -61,6 +61,8 @@
     const isAdminViewer = !!(user && user.isAdmin);
     const messages = st.messages || [];
     const isAnon = st.prefs ? !!st.prefs.defaultAnonymous : false;
+    const isChatLocked = !!st.chatLocked;
+    const canPost = !isChatLocked || isAdminViewer;
 
     // A pinned+deleted message shouldn't linger in the pinned banner (this
     // is also enforced when deleting, but guarded here too for old data).
@@ -81,8 +83,21 @@
               Live discussion
             </span>
             <span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-brand-900/40 text-brand-300 border border-brand-800/50">${messages.length} messages</span>
+            ${isAdminViewer ? `
+              <button id="chat-lock-toggle-btn" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition cursor-pointer ${isChatLocked ? 'bg-rose-900/40 text-rose-300 border-rose-700/50 hover:bg-rose-900/60' : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'}" title="${isChatLocked ? 'Unlock chat — let everyone post' : 'Lock chat — admins only'}">
+                <span>${isChatLocked ? '🔒' : '🔓'}</span>
+                <span>${isChatLocked ? 'Locked' : 'Lock chat'}</span>
+              </button>
+            ` : ''}
           </div>
         </div>
+
+        ${isChatLocked ? `
+          <div class="shrink-0 bg-rose-500/10 border border-rose-500/30 rounded-2xl p-2.5 px-3 flex items-center gap-2 text-xs text-rose-200">
+            <span class="text-base shrink-0">🔒</span>
+            <span>${isAdminViewer ? 'Chat is locked — only admins can send messages. Students can still read.' : 'Chat is locked by an admin. You can read messages but not post right now.'}</span>
+          </div>
+        ` : ''}
 
         <!-- Pinned Messages Banner -->
         ${pinnedMessages.length > 0 ? `
@@ -235,37 +250,51 @@
           </div>
 
           <!-- Input Footer -->
-          <div class="p-2.5 border-t border-slate-800 bg-slate-900/50 rounded-b-2xl shrink-0">
-            <div class="flex items-center gap-2">
+          ${canPost ? `
+            <div class="p-2.5 border-t border-slate-800 bg-slate-900/50 rounded-b-2xl shrink-0">
+              <div class="flex items-center gap-2">
 
-              <!-- Attachment Button -->
-              <label class="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl cursor-pointer transition border border-slate-700" title="Attach Image or File">
-                <span class="text-sm">📎</span>
-                <input type="file" id="chat-file-input" class="hidden" accept="image/*,.pdf,.doc,.docx,.txt" />
-              </label>
+                <!-- Attachment Button -->
+                <label class="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl cursor-pointer transition border border-slate-700" title="Attach Image or File">
+                  <span class="text-sm">📎</span>
+                  <input type="file" id="chat-file-input" class="hidden" accept="image/*,.pdf,.doc,.docx,.txt" />
+                </label>
 
-              <input type="text" id="chat-input" placeholder="Type a message..." class="flex-1 min-w-0 bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-brand-500 transition placeholder:text-slate-500" />
+                <input type="text" id="chat-input" placeholder="Type a message..." class="flex-1 min-w-0 bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-brand-500 transition placeholder:text-slate-500" />
 
-              <button id="chat-send-btn" class="px-3 sm:px-4 py-2 bg-brand-600 hover:bg-brand-500 active:scale-95 text-white font-bold text-sm rounded-xl transition flex items-center gap-1.5 shadow-md shrink-0 cursor-pointer">
-                <span class="hidden sm:inline">Send</span>
-                <span class="text-xs">🚀</span>
-              </button>
+                <button id="chat-send-btn" class="px-3 sm:px-4 py-2 bg-brand-600 hover:bg-brand-500 active:scale-95 text-white font-bold text-sm rounded-xl transition flex items-center gap-1.5 shadow-md shrink-0 cursor-pointer">
+                  <span class="hidden sm:inline">Send</span>
+                  <span class="text-xs">🚀</span>
+                </button>
+              </div>
+
+              <div class="mt-2 flex items-center justify-between px-1 text-xs text-slate-400">
+                <label class="flex items-center gap-1.5 cursor-pointer select-none">
+                  <input type="checkbox" id="chat-anon-check" ${isAnon ? 'checked' : ''} class="rounded border-slate-700 bg-slate-800 text-brand-600 focus:ring-brand-500" />
+                  <span>Post anonymously</span>
+                </label>
+                <span class="truncate">Next message as: <strong class="text-slate-200">${isAnon ? 'Anonymous' : (user ? user.fullName : 'Guest')}</strong></span>
+              </div>
             </div>
-
-            <div class="mt-2 flex items-center justify-between px-1 text-xs text-slate-400">
-              <label class="flex items-center gap-1.5 cursor-pointer select-none">
-                <input type="checkbox" id="chat-anon-check" ${isAnon ? 'checked' : ''} class="rounded border-slate-700 bg-slate-800 text-brand-600 focus:ring-brand-500" />
-                <span>Post anonymously</span>
-              </label>
-              <span class="truncate">Next message as: <strong class="text-slate-200">${isAnon ? 'Anonymous' : (user ? user.fullName : 'Guest')}</strong></span>
+          ` : `
+            <div class="p-3 border-t border-slate-800 bg-slate-900/50 rounded-b-2xl shrink-0 text-center text-xs text-slate-500">
+              🔒 Only admins can post while this chat is locked.
             </div>
-          </div>
+          `}
 
         </div>
       </div>
     `;
 
     ensureGlobalCloser();
+
+    const lockToggleBtn = el('chat-lock-toggle-btn');
+    if (lockToggleBtn) {
+      lockToggleBtn.addEventListener('click', async () => {
+        if (STATE.toggleChatLock) await STATE.toggleChatLock();
+        render();
+      });
+    }
 
     document.querySelectorAll('.chat-zoomable-img').forEach(img => {
       img.addEventListener('click', (e) => {

@@ -50,7 +50,8 @@
     quizAttempts: [],
     bookmarks: [],
     viewingYear: null,
-    prefs: getSavedPrefs()
+    prefs: getSavedPrefs(),
+    chatLocked: false
   };
 
   function notify(changes) {
@@ -270,6 +271,28 @@
       } catch (err) {
         console.error('Error permanently deleting message from Supabase:', err);
       }
+    }
+  }
+
+  /**
+   * Admin-only "lock" for the Community chat — like a WhatsApp admin-only
+   * group. When locked, only admins can post; everyone else can still read.
+   * Persisted to a small `app_settings` key/value table in Supabase (falls
+   * back to local-only if that table doesn't exist yet).
+   */
+  async function toggleChatLock() {
+    if (!state.currentUser || !state.currentUser.isAdmin) return;
+    state.chatLocked = !state.chatLocked;
+    notify({ type: 'chatLock' });
+
+    if (!window.db) return;
+    try {
+      const { error } = await window.db
+        .from('app_settings')
+        .upsert([{ id: 'chat_lock', value: state.chatLocked }], { onConflict: 'id' });
+      if (error) throw error;
+    } catch (err) {
+      console.warn('Could not sync chat lock to Supabase (does the `app_settings` table exist? id text primary key, value boolean):', err);
     }
   }
 
@@ -514,6 +537,19 @@
         }
       })
       .subscribe();
+
+    window.db
+      .channel('public:app_settings')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, (payload) => {
+        const row = payload.new || payload.old;
+        if (!row || row.id !== 'chat_lock') return;
+        state.chatLocked = !!(payload.new && payload.new.value);
+        notify({ type: 'chatLock' });
+        if (global.MP_CHAT && state.currentTab === 'chat') {
+          global.MP_CHAT.render();
+        }
+      })
+      .subscribe();
   }
 
   async function ensureUserSynced(user) {
@@ -625,6 +661,17 @@
         console.warn('No `quizzes` table found in Supabase yet — run the quiz schema SQL to enable quizzes.');
       }
 
+      try {
+        const { data: settingsData } = await window.db
+          .from('app_settings')
+          .select('*')
+          .eq('id', 'chat_lock')
+          .maybeSingle();
+        if (settingsData) state.chatLocked = !!settingsData.value;
+      } catch (err) {
+        console.warn('No `app_settings` table found in Supabase yet — chat lock will stay local-only.');
+      }
+
       if (state.currentUser) {
         try {
           const { data: attemptsData } = await window.db
@@ -684,6 +731,7 @@
     togglePinMessage,
     deleteMessage,
     hardDeleteMessage,
+    toggleChatLock,
     toggleReaction,
     createQuiz,
     deleteQuiz,
