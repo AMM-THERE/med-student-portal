@@ -710,6 +710,9 @@
       }
 
       notify({ type: 'init' });
+      if (global.MP_NAV && typeof global.MP_NAV.renderAll === 'function') {
+        global.MP_NAV.renderAll();
+      }
       setupRealtime();
     } catch (err) {
       console.error('Error fetching data:', err);
