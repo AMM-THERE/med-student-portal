@@ -162,6 +162,20 @@
     return attempts.reduce((latest, a) => (!latest || new Date(a.completedAt) > new Date(latest.completedAt)) ? a : latest, null);
   }
 
+  /** A quiz is locked (one attempt ever — finished or exited early) once
+   *  any attempt row exists for this user+quiz. */
+  function hasAttempted(quizId) {
+    return !!lastAttemptFor(quizId);
+  }
+
+  function formatDuration(sec) {
+    if (sec == null) return '';
+    if (sec < 60) return `${sec}s`;
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}m ${s}s`;
+  }
+
   /** Matches the Quiz Hub search box against a quiz's title and subject —
    *  so typing "anatomy" finds every quiz tagged with that subject. */
   function applyQuizFilter(list) {
@@ -276,6 +290,7 @@
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             ${quizzes.map(q => {
               const last = lastAttemptFor(q.id);
+              const locked = !!last;
               const count = (q.questions || []).length;
               return `
                 <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm hover:shadow-md transition space-y-3">
@@ -289,8 +304,11 @@
                       ${user && user.isAdmin ? `<button class="btn-delete-quiz p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30 transition" data-id="${q.id}" title="Delete quiz">${UI.icon ? UI.icon('trash', 'w-3.5 h-3.5') : '🗑️'}</button>` : ''}
                     </div>
                   </div>
-                  ${last ? `<p class="text-xs font-semibold text-brand-600 dark:text-brand-400">Last score: ${last.score}/${last.totalQuestions}</p>` : ''}
-                  <button class="btn-start-quiz w-full py-2 bg-brand-50 hover:bg-brand-100 text-brand-700 dark:bg-brand-900/30 dark:text-brand-300 font-semibold text-sm rounded-xl transition disabled:opacity-40 disabled:cursor-not-allowed" data-quiz-id="${q.id}" ${count === 0 ? 'disabled' : ''}>Start Quiz</button>
+                  ${last ? `<p class="text-xs font-semibold ${last.isPartial ? 'text-amber-600 dark:text-amber-400' : 'text-brand-600 dark:text-brand-400'}">${last.isPartial ? '🔒 Exited early — locked score' : '🔒 Your score'}: ${last.score}/${last.totalQuestions}</p>` : ''}
+                  <div class="flex items-center gap-2">
+                    <button class="btn-start-quiz flex-1 py-2 ${locked ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500' : 'bg-brand-50 hover:bg-brand-100 text-brand-700 dark:bg-brand-900/30 dark:text-brand-300'} font-semibold text-sm rounded-xl transition disabled:opacity-40 disabled:cursor-not-allowed" data-quiz-id="${q.id}" ${count === 0 || locked ? 'disabled' : ''}>${locked ? 'Locked' : 'Start Quiz'}</button>
+                    <button class="btn-open-leaderboard shrink-0 p-2 rounded-xl bg-amber-50 hover:bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 transition" data-quiz-id="${q.id}" title="Leaderboard">🏆</button>
+                  </div>
                 </div>
               `;
             }).join('')}
@@ -323,6 +341,10 @@
 
     document.querySelectorAll('.btn-start-quiz').forEach(b => {
       b.addEventListener('click', () => startQuiz(b.dataset.quizId));
+    });
+
+    document.querySelectorAll('.btn-open-leaderboard').forEach(b => {
+      b.addEventListener('click', () => openLeaderboard(b.dataset.quizId));
     });
 
     // Admin-only quiz delete
@@ -368,43 +390,125 @@
       return items;
     }
 
-    function listHtml() {
-      const items = buildItems();
-      if (items.length === 0) {
-        return `<p class="text-sm text-slate-500 dark:text-slate-400 text-center py-8">No saved questions yet.</p>`;
-      }
-      return `
-        <div class="space-y-2">
-          ${items.map(({ quiz, question }) => `
-            <div class="bg-white dark:bg-slate-900 rounded-xl border border-amber-200/60 dark:border-amber-800/40 p-3 flex items-start justify-between gap-3">
-              <div class="min-w-0">
-                <p class="text-xs text-slate-500 font-semibold uppercase tracking-wide">${UI.ESC ? UI.ESC(quiz.title) : quiz.title}</p>
-                <p class="text-sm text-slate-800 dark:text-slate-200 mt-0.5">${UI.ESC ? UI.ESC(question.text) : question.text}</p>
-                <p class="text-xs text-emerald-600 dark:text-emerald-400 mt-1 font-semibold">Correct: ${question.correct}) ${UI.ESC ? UI.ESC(question.options[question.correct] || '') : (question.options[question.correct] || '')}</p>
-                ${question.explanation ? `<p class="text-xs text-slate-500 mt-0.5">${UI.ESC ? UI.ESC(question.explanation) : question.explanation}</p>` : ''}
-              </div>
-              <button class="btn-unsave-modal shrink-0 text-xs px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-semibold" data-qid="${question.id}">Remove</button>
-            </div>
-          `).join('')}
-        </div>
-      `;
-    }
+    // Local-only per-question review state: which option (if any) was
+    // picked, and whether the answer has been revealed. Never touches
+    // quiz_attempts — this is practice, not a graded run.
+    const reviewState = new Map(); // questionId -> { selected, revealed }
+    let idx = 0;
 
     const m = new MODALS.Modal({ title: '🔖 Saved for Review', size: 'lg' });
-    m.setContent(listHtml());
-    m.open();
 
-    function wireRemoveButtons() {
-      m.el.querySelectorAll('.btn-unsave-modal').forEach(b => {
-        b.addEventListener('click', async () => {
-          await STATE.toggleSavedQuestion(b.dataset.qid);
-          m.setContent(listHtml());
-          wireRemoveButtons();
-          render();
+    function renderCurrent() {
+      const items = buildItems();
+
+      if (items.length === 0) {
+        m.setContent(`<p class="text-sm text-slate-500 dark:text-slate-400 text-center py-8">No saved questions yet.</p>`);
+        return;
+      }
+
+      if (idx > items.length - 1) idx = items.length - 1;
+      if (idx < 0) idx = 0;
+
+      const { quiz, question } = items[idx];
+      const total = items.length;
+      const num = idx + 1;
+      const rs = reviewState.get(question.id) || {};
+      const revealed = !!rs.selected || !!rs.revealed;
+
+      m.setContent(`
+        <div class="space-y-5">
+          <div class="flex items-center justify-between gap-3">
+            <p class="text-xs text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wide truncate">${UI.ESC ? UI.ESC(quiz.title) : quiz.title}</p>
+            <span class="text-xs font-bold text-slate-500 shrink-0">${num} of ${total}</span>
+          </div>
+
+          <div class="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+            <div class="h-full bg-amber-500 transition-all" style="width:${(num / total) * 100}%"></div>
+          </div>
+
+          <div class="space-y-4">
+            <div class="flex items-start justify-between gap-3">
+              <h3 class="text-base font-bold text-slate-900 dark:text-slate-100 leading-snug">${UI.ESC ? UI.ESC(question.text) : question.text}</h3>
+              <button class="btn-unsave-current shrink-0 text-xl leading-none" data-qid="${question.id}" title="Remove from saved">🔖</button>
+            </div>
+
+            <div class="space-y-2.5">
+              ${OPTION_LETTERS.map(letter => {
+                const optText = question.options[letter];
+                let extraClass = 'border-slate-200 dark:border-slate-700 hover:border-amber-400 dark:hover:border-amber-500';
+                let icon = '';
+                if (revealed) {
+                  if (letter === question.correct) {
+                    extraClass = 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20';
+                    icon = ' ✓';
+                  } else if (rs.selected && letter === rs.selected) {
+                    extraClass = 'border-rose-500 bg-rose-50 dark:bg-rose-900/20';
+                    icon = ' ✕';
+                  } else {
+                    extraClass = 'border-slate-200 dark:border-slate-800 opacity-60';
+                  }
+                }
+                return `
+                  <button class="btn-review-option w-full text-left px-4 py-3 rounded-xl border-2 transition text-sm text-slate-800 dark:text-slate-200 flex items-center justify-between gap-2 ${extraClass}" data-letter="${letter}" ${revealed ? 'disabled' : ''}>
+                    <span><strong class="mr-1.5">${letter})</strong>${UI.ESC ? UI.ESC(optText) : optText}</span>
+                    <span class="font-bold">${icon}</span>
+                  </button>
+                `;
+              }).join('')}
+            </div>
+
+            ${revealed ? `
+              <div class="rounded-xl p-4 ${(!rs.selected || rs.selected === question.correct) ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800' : 'bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800'}">
+                <p class="text-sm font-bold ${(!rs.selected || rs.selected === question.correct) ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}">
+                  Correct answer: ${question.correct}) ${UI.ESC ? UI.ESC(question.options[question.correct] || '') : (question.options[question.correct] || '')}
+                </p>
+                ${question.explanation ? `<p class="text-xs text-slate-600 dark:text-slate-400 mt-1.5">${UI.ESC ? UI.ESC(question.explanation) : question.explanation}</p>` : `<p class="text-xs text-slate-500 mt-1.5 italic">No explanation was provided for this question.</p>`}
+              </div>
+            ` : `
+              <button id="btn-reveal-answer" class="text-xs font-semibold text-amber-700 dark:text-amber-400 hover:underline">Reveal answer</button>
+            `}
+          </div>
+
+          <div class="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-slate-800">
+            <button id="btn-review-prev" class="px-4 py-2 rounded-xl text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-40 disabled:cursor-not-allowed" ${idx === 0 ? 'disabled' : ''}>← Prev</button>
+            <button id="btn-review-next" class="px-4 py-2 rounded-xl text-sm font-bold text-white bg-amber-600 hover:bg-amber-500 transition disabled:opacity-40 disabled:cursor-not-allowed" ${idx === total - 1 ? 'disabled' : ''}>Next →</button>
+          </div>
+        </div>
+      `);
+
+      wire(question, items);
+    }
+
+    function wire(question, items) {
+      m.el.querySelectorAll('.btn-review-option').forEach(b => {
+        b.addEventListener('click', () => {
+          reviewState.set(question.id, { selected: b.dataset.letter, revealed: true });
+          renderCurrent();
         });
       });
+
+      const revealBtn = m.el.querySelector('#btn-reveal-answer');
+      if (revealBtn) revealBtn.addEventListener('click', () => {
+        reviewState.set(question.id, Object.assign({}, reviewState.get(question.id), { revealed: true }));
+        renderCurrent();
+      });
+
+      const unsaveBtn = m.el.querySelector('.btn-unsave-current');
+      if (unsaveBtn) unsaveBtn.addEventListener('click', async () => {
+        await STATE.toggleSavedQuestion(unsaveBtn.dataset.qid);
+        render(); // refresh the 🔖 badge count on the Quiz Hub behind the modal
+        renderCurrent();
+      });
+
+      const prevBtn = m.el.querySelector('#btn-review-prev');
+      if (prevBtn) prevBtn.addEventListener('click', () => { idx = Math.max(0, idx - 1); renderCurrent(); });
+
+      const nextBtn = m.el.querySelector('#btn-review-next');
+      if (nextBtn) nextBtn.addEventListener('click', () => { idx = Math.min(items.length - 1, idx + 1); renderCurrent(); });
     }
-    wireRemoveButtons();
+
+    m.open();
+    renderCurrent();
   }
 
   /* ---------------------------------------------------------
@@ -585,15 +689,23 @@
 
   function startQuiz(quizId) {
     const STATE = getSTATE();
+    const UI = getUI();
     const st = STATE.state || {};
     const quiz = (st.quizzes || []).find(q => q.id === quizId);
     if (!quiz || !quiz.questions || quiz.questions.length === 0) return;
+
+    if (hasAttempted(quizId)) {
+      const msg = 'You already attempted this quiz — it can only be taken once.';
+      if (UI.toast) UI.toast(msg, { variant: 'error' }); else alert(msg);
+      return;
+    }
 
     currentRun = {
       quiz,
       order: quiz.questions.map(q => q.id),
       index: 0,
-      answers: new Map()
+      answers: new Map(),
+      startedAt: new Date().toISOString()
     };
     showingResults = false;
     render();
@@ -680,12 +792,21 @@
     `;
 
     const exitBtn = el('btn-exit-quiz');
-    if (exitBtn) exitBtn.addEventListener('click', () => {
-      if (confirm('Exit this quiz? Your progress on this attempt will be lost.')) {
-        currentRun = null;
-        showingResults = false;
-        render();
-      }
+    if (exitBtn) exitBtn.addEventListener('click', async () => {
+      const ok = confirm('Exit this quiz? You will NOT be able to retake it — your current progress will be locked in as your final score.');
+      if (!ok) return;
+
+      const STATE2 = getSTATE();
+      let scoreSoFar = 0;
+      currentRun.answers.forEach(a => { if (a.isCorrect) scoreSoFar++; });
+      const totalQ = currentRun.order.length;
+      const exitedQuizId = currentRun.quiz.id;
+      const exitedStartedAt = currentRun.startedAt;
+
+      currentRun = null;
+      showingResults = false;
+      await STATE2.submitQuizAttempt(exitedQuizId, scoreSoFar, totalQ, { startedAt: exitedStartedAt, isPartial: true });
+      render();
     });
 
     const saveBtn = el('btn-toggle-save');
@@ -730,7 +851,7 @@
 
     if (!currentRun.saved) {
       currentRun.saved = true;
-      STATE.submitQuizAttempt(quiz.id, score, total);
+      STATE.submitQuizAttempt(quiz.id, score, total, { startedAt: currentRun.startedAt, isPartial: false });
     }
 
     const pct = Math.round((score / total) * 100);
@@ -763,7 +884,8 @@
           }).join('')}
         </div>
 
-        <div class="flex justify-center">
+        <div class="flex justify-center gap-3">
+          <button id="btn-view-leaderboard" class="px-6 py-2.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 font-bold text-sm rounded-xl transition">🏆 Leaderboard</button>
           <button id="btn-finish-quiz" class="px-6 py-2.5 bg-brand-600 hover:bg-brand-500 text-white font-bold text-sm rounded-xl shadow-md transition">Back to Quiz Hub</button>
         </div>
       </div>
@@ -776,12 +898,88 @@
       });
     });
 
+    const lbBtn = el('btn-view-leaderboard');
+    if (lbBtn) lbBtn.addEventListener('click', () => openLeaderboard(quiz.id));
+
     const finishBtn = el('btn-finish-quiz');
     if (finishBtn) finishBtn.addEventListener('click', () => {
       currentRun = null;
       showingResults = false;
       render();
     });
+  }
+
+  /* ---------------------------------------------------------
+     Leaderboard modal — top 10 by score (fastest time as
+     tiebreak), full-marks overflow, admin sees everyone
+     --------------------------------------------------------- */
+
+  async function openLeaderboard(quizId) {
+    const STATE = getSTATE();
+    const UI = getUI();
+    const MODALS = getMODALS();
+    if (!MODALS.Modal) return;
+
+    const st = STATE.state || {};
+    const user = st.currentUser;
+    const quiz = (st.quizzes || []).find(q => q.id === quizId);
+    const isAdmin = !!(user && user.isAdmin);
+
+    const m = new MODALS.Modal({ title: `🏆 Leaderboard${quiz ? ' — ' + quiz.title : ''}`, size: 'lg' });
+    m.setContent(`<p class="text-sm text-slate-500 dark:text-slate-400 text-center py-8">Loading…</p>`);
+    m.open();
+
+    const { error, rows } = await STATE.fetchLeaderboard(quizId);
+
+    if (error) {
+      m.setContent(`<p class="text-sm text-rose-600 dark:text-rose-400 text-center py-8">Could not load the leaderboard:<br>${UI.ESC ? UI.ESC(error) : error}</p>`);
+      return;
+    }
+
+    if (rows.length === 0) {
+      m.setContent(`<p class="text-sm text-slate-500 dark:text-slate-400 text-center py-8">No attempts yet — be the first!</p>`);
+      return;
+    }
+
+    // Non-admins get the top 10, EXCEPT when more than 10 users scored full
+    // marks — then every full-marks user is shown (only the 10-cap applies
+    // once you drop below 100%). Admins always see every attempt.
+    const fullMarks = rows.filter(r => r.totalQuestions > 0 && r.score === r.totalQuestions);
+    const capped = fullMarks.length > 10 ? fullMarks : rows.slice(0, 10);
+    const visible = isAdmin ? rows : capped;
+
+    const myUserId = user ? user.id : null;
+    const myRank = rows.findIndex(r => r.userId === myUserId);
+    const iAmVisible = visible.some(r => r.userId === myUserId);
+
+    m.setContent(`
+      <div class="space-y-4">
+        <p class="text-xs text-slate-500 dark:text-slate-400">
+          ${isAdmin ? `Showing all ${rows.length} attempt${rows.length === 1 ? '' : 's'} (admin view).` : `Top ${capped.length} of ${rows.length} attempt${rows.length === 1 ? '' : 's'}.`}
+        </p>
+        <div class="space-y-1.5">
+          ${visible.map((r, i) => `
+            <div class="flex items-center justify-between px-3 py-2 rounded-xl ${r.userId === myUserId ? 'bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800' : 'bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800'}">
+              <div class="flex items-center gap-3 min-w-0">
+                <span class="w-6 shrink-0 text-xs font-bold text-slate-400 text-center">${i + 1}</span>
+                <div class="min-w-0">
+                  <p class="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">
+                    ${UI.ESC ? UI.ESC(r.fullName) : r.fullName}${r.isPartial ? ' <span class="text-[10px] font-normal text-amber-600 dark:text-amber-400">(exited early)</span>' : ''}
+                  </p>
+                  ${r.durationSec != null ? `<p class="text-[11px] text-slate-400">${formatDuration(r.durationSec)}</p>` : ''}
+                </div>
+              </div>
+              <span class="text-sm font-bold text-slate-700 dark:text-slate-300 shrink-0">${r.score}/${r.totalQuestions}</span>
+            </div>
+          `).join('')}
+        </div>
+        ${(!isAdmin && myRank !== -1 && !iAmVisible) ? `
+          <div class="pt-2 border-t border-slate-200 dark:border-slate-800">
+            <p class="text-xs text-slate-500 dark:text-slate-400">Your rank: <strong class="text-slate-700 dark:text-slate-300">#${myRank + 1}</strong> · ${rows[myRank].score}/${rows[myRank].totalQuestions}</p>
+          </div>
+        ` : ''}
+      </div>
+    `);
   }
 
   global.MP_QUIZ = { render, openUploadQuiz };

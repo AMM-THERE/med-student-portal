@@ -462,30 +462,115 @@
     return null;
   }
 
-  async function submitQuizAttempt(quizId, score, totalQuestions) {
+  /**
+   * Records a quiz attempt — either a normal finish (isPartial: false) or an
+   * early exit (isPartial: true). A quiz can only ever be attempted ONCE per
+   * user: if an attempt already exists locally for this quiz+user, that
+   * existing attempt is returned as-is and nothing new is written (this is
+   * the permanent-lock behavior). The Supabase `quiz_attempts` table also
+   * carries a UNIQUE (quiz_id, user_id) constraint as a server-side backstop
+   * against the same race across two devices/tabs — see the SQL migration.
+   */
+  async function submitQuizAttempt(quizId, score, totalQuestions, opts) {
+    opts = opts || {};
     const uid = state.currentUser ? state.currentUser.id : null;
+
+    const already = state.quizAttempts.find(a => a.quizId === quizId && a.userId === uid);
+    if (already) return already;
+
+    const nowIso = new Date().toISOString();
     const local = {
       id: 'attempt_' + Date.now(),
       quizId,
       userId: uid,
       score,
       totalQuestions,
-      completedAt: new Date().toISOString()
+      isPartial: !!opts.isPartial,
+      startedAt: opts.startedAt || nowIso,
+      completedAt: nowIso
     };
     state.quizAttempts.push(local);
     notify({ type: 'quizAttempts' });
 
     if (window.db && uid) {
       try {
-        await window.db.from('quiz_attempts').insert([{
+        const { error } = await window.db.from('quiz_attempts').insert([{
           quiz_id: quizId,
           user_id: uid,
           score,
-          total_questions: totalQuestions
+          total_questions: totalQuestions,
+          is_partial: !!opts.isPartial,
+          started_at: opts.startedAt || nowIso
         }]);
+        if (error) {
+          const isDupe = error.code === '23505' || /duplicate key/i.test(error.message || '');
+          if (isDupe) {
+            console.warn('Quiz attempt already recorded for this user/quiz (locked) — ignoring duplicate insert.');
+          } else {
+            console.error('Error saving quiz attempt (does the `quiz_attempts` table have the `is_partial`/`started_at` columns? see SQL migration):', error);
+          }
+        }
       } catch (err) {
         console.error('Error saving quiz attempt (does the `quiz_attempts` table exist?):', err);
       }
+    }
+
+    return local;
+  }
+
+  /**
+   * Loads every attempt (finished or exited-early) for one quiz, joined with
+   * the attempting user's name, and sorts by score desc, then fastest
+   * completion time (started_at → completed_at) as the tiebreaker, then
+   * earliest submission. Caller decides how many rows to actually display
+   * (Quiz Hub caps non-admins at top 10, with a full-marks overflow — see
+   * quiz.js `openLeaderboard`).
+   */
+  async function fetchLeaderboard(quizId) {
+    if (!window.db) return { error: 'Supabase client is not available.', rows: [] };
+    try {
+      const { data, error } = await window.db
+        .from('quiz_attempts')
+        .select('id, user_id, score, total_questions, started_at, completed_at, is_partial, users ( full_name, username )')
+        .eq('quiz_id', quizId);
+
+      if (error) {
+        return {
+          error: error.message || error.hint || error.details || 'Unknown error loading leaderboard (does `quiz_attempts` have a foreign key to `users`? see SQL migration).',
+          rows: []
+        };
+      }
+
+      const rows = (data || []).map(r => {
+        const startedMs = r.started_at ? new Date(r.started_at).getTime() : null;
+        const completedMs = r.completed_at ? new Date(r.completed_at).getTime() : null;
+        const durationSec = (startedMs != null && completedMs != null && !isNaN(startedMs) && !isNaN(completedMs))
+          ? Math.max(0, Math.round((completedMs - startedMs) / 1000))
+          : null;
+        return {
+          userId: r.user_id,
+          fullName: (r.users && r.users.full_name) || 'Unknown student',
+          username: (r.users && r.users.username) || '',
+          score: r.score,
+          totalQuestions: r.total_questions,
+          pct: r.total_questions ? (r.score / r.total_questions) : 0,
+          isPartial: !!r.is_partial,
+          durationSec,
+          completedAt: r.completed_at
+        };
+      });
+
+      rows.sort((a, b) => {
+        if (b.pct !== a.pct) return b.pct - a.pct;
+        const ad = a.durationSec == null ? Infinity : a.durationSec;
+        const bd = b.durationSec == null ? Infinity : b.durationSec;
+        if (ad !== bd) return ad - bd;
+        return new Date(a.completedAt || 0) - new Date(b.completedAt || 0);
+      });
+
+      return { error: null, rows };
+    } catch (err) {
+      return { error: (err && err.message) || String(err), rows: [] };
     }
   }
 
@@ -735,6 +820,8 @@
               userId: a.user_id,
               score: a.score,
               totalQuestions: a.total_questions,
+              isPartial: !!a.is_partial,
+              startedAt: a.started_at,
               completedAt: a.completed_at
             }));
           }
@@ -792,6 +879,7 @@
     createQuiz,
     deleteQuiz,
     submitQuizAttempt,
+    fetchLeaderboard,
     toggleSavedQuestion,
     loadFromDatabase
   };
