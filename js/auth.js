@@ -14,7 +14,8 @@
   // قائمة إيميلات الأدمن / المالك المثبتة
   const OWNER_EMAILS = [
     'msdbdallh83@gmail.com',
-    'amm.there@gmail.com'
+    'amm.there@gmail.com',
+    'INVICTUS2@gmail.com'
   ];
 
   function isValidEmail(s) {
