@@ -102,5 +102,69 @@
     });
   }
 
-  global.MP_MODALS = { Modal, confirmDialog };
+  /** Admin-only: add/delete the shared subject list used by Lectures & Quiz filters. */
+  function openSubjectManager() {
+    const STATE = global.MP_STATE;
+    const UI = global.MP_UI;
+    const user = STATE.state.currentUser;
+    if (!user || !user.isAdmin) return;
+
+    const m = new Modal({ title: 'Manage Subjects', size: 'sm' });
+
+    function bodyHtml() {
+      const subjects = STATE.state.subjects || [];
+      return `
+        <div class="space-y-3">
+          <form id="add-subject-form" class="flex gap-2">
+            <input id="new-subject-input" type="text" placeholder="e.g. Anatomy" class="flex-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm" />
+            <button type="submit" class="px-3 py-2 rounded-lg text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700">Add</button>
+          </form>
+          <ul class="max-h-64 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
+            ${subjects.length === 0 ? '<li class="py-2 text-sm text-slate-500">No subjects yet.</li>' : subjects.map(s => `
+              <li class="flex items-center justify-between py-2 text-sm text-slate-800 dark:text-slate-200">
+                <span>${ESC(s)}</span>
+                <button type="button" data-del-subject="${ESC(s)}" class="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30" title="Delete subject">${UI.icon('trash', 'w-4 h-4')}</button>
+              </li>
+            `).join('')}
+          </ul>
+        </div>
+      `;
+    }
+
+    function wire() {
+      const form = m.el.querySelector('#add-subject-form');
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const input = m.el.querySelector('#new-subject-input');
+        const err = await addSubjectWrap(input.value);
+        if (err) { alert('Could not add subject:\n\n' + err); return; }
+        m.setContent(bodyHtml());
+        wire();
+        if (global.MP_NAV && global.MP_NAV.renderView) global.MP_NAV.renderView();
+      });
+      m.el.querySelectorAll('[data-del-subject]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const name = btn.dataset.delSubject;
+          if (!confirm(`Delete subject "${name}"? Existing lectures/quizzes keep it as text, but it leaves the picker.`)) return;
+          const err = await STATE.deleteSubject(name);
+          if (err) { alert('Could not delete subject:\n\n' + err); return; }
+          m.setContent(bodyHtml());
+          wire();
+          if (global.MP_NAV && global.MP_NAV.renderView) global.MP_NAV.renderView();
+        });
+      });
+    }
+
+    async function addSubjectWrap(name) {
+      const clean = String(name || '').trim();
+      if (!clean) return 'Enter a subject name.';
+      return await STATE.addSubject(clean);
+    }
+
+    m.setContent(bodyHtml());
+    m.open();
+    wire();
+  }
+
+  global.MP_MODALS = { Modal, confirmDialog, openSubjectManager };
 })(window);

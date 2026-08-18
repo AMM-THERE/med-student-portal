@@ -34,9 +34,10 @@
 
     const yearOptions = ['all', ...CFG.ACADEMIC_YEARS].map(y =>
       `<option value="${y}" ${filter.year === y ? 'selected' : ''}>${y === 'all' ? 'All years' : y}</option>`).join('');
-    const subjects = ['all', ...CFG.DEFAULT_SUBJECTS];
+    const subjects = ['all', ...(STATE.state.subjects || [])];
     const subjectOptions = subjects.map(s =>
       `<option value="${UI.ESC(s)}" ${filter.subject === s ? 'selected' : ''}>${s === 'all' ? 'All subjects' : UI.ESC(s)}</option>`).join('');
+    const isAdmin = !!(STATE.state.currentUser && STATE.state.currentUser.isAdmin);
 
     v.innerHTML = `
       <div class="flex items-end justify-between gap-3 mb-5">
@@ -53,7 +54,10 @@
           <select id="f-year" class="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-sm">${yearOptions}</select>
         </label>
         <label class="block">
-          <span class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">Subject</span>
+          <span class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center justify-between">
+            <span>Subject</span>
+            ${isAdmin ? `<button type="button" id="manage-subjects-btn" class="normal-case text-[11px] font-semibold text-brand-600 hover:underline">Manage</button>` : ''}
+          </span>
           <select id="f-subject" class="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-sm">${subjectOptions}</select>
         </label>
         <label class="block">
@@ -86,6 +90,8 @@
     v.querySelector('#f-year').addEventListener('change', e => { filter.year = e.target.value; render(); });
     v.querySelector('#f-subject').addEventListener('change', e => { filter.subject = e.target.value; render(); });
     v.querySelector('#f-q').addEventListener('input', UTIL.debounce(e => { filter.q = e.target.value.trim(); render(); }, 150));
+    const manageBtn = v.querySelector('#manage-subjects-btn');
+    if (manageBtn) manageBtn.addEventListener('click', () => MODALS.openSubjectManager());
 
     // Hero CTA → opens the same modal as the FAB
     const emptyBtn = v.querySelector('#empty-add-lecture');
@@ -145,7 +151,7 @@
     const u = STATE.state.currentUser;
     if (!u || !u.isAdmin) return;
     const yearOptions = CFG.ACADEMIC_YEARS.map(y => `<option value="${y}">${y}</option>`).join('');
-    const subjectOptions = CFG.DEFAULT_SUBJECTS.map(s => `<option value="${s}">${s}</option>`).join('');
+    const subjectOptions = (STATE.state.subjects || []).map(s => `<option value="${s}">${s}</option>`).join('');
 
     const m = new MODALS.Modal({ title: 'Add Lecture', size: 'lg' });
     m.setContent(`

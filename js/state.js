@@ -46,6 +46,7 @@
     users: [],
     messages: [],
     lectures: [],
+    subjects: (global.MP_CONFIG && global.MP_CONFIG.DEFAULT_SUBJECTS) ? global.MP_CONFIG.DEFAULT_SUBJECTS.slice() : [],
     quizzes: [],
     quizAttempts: [],
     bookmarks: [],
@@ -162,6 +163,42 @@
         }
       } catch (err) {
         console.error('Error deleting lecture from Supabase:', err);
+        return (err && err.message) || String(err);
+      }
+    }
+    return null;
+  }
+
+  async function addSubject(name) {
+    const clean = String(name || '').trim();
+    if (!clean) return null;
+    const exists = state.subjects.some(s => s.toLowerCase() === clean.toLowerCase());
+    if (exists) return null;
+    state.subjects.push(clean);
+    notify({ type: 'subjects' });
+
+    if (window.db) {
+      try {
+        const { error } = await window.db.from('subjects').insert([{ name: clean }]);
+        if (error) return error.message || error.hint || error.details || 'Unknown error adding subject.';
+      } catch (err) {
+        return (err && err.message) || String(err);
+      }
+    }
+    return null;
+  }
+
+  async function deleteSubject(name) {
+    const idx = state.subjects.findIndex(s => s === name);
+    if (idx === -1) return null;
+    state.subjects.splice(idx, 1);
+    notify({ type: 'subjects' });
+
+    if (window.db) {
+      try {
+        const { error } = await window.db.from('subjects').delete().eq('name', name);
+        if (error) return error.message || error.hint || error.details || 'Unknown error deleting subject.';
+      } catch (err) {
         return (err && err.message) || String(err);
       }
     }
@@ -633,6 +670,15 @@
       }
 
       try {
+        const { data: subData } = await window.db.from('subjects').select('*').order('name', { ascending: true });
+        if (subData && subData.length > 0) {
+          state.subjects = subData.map(s => s.name);
+        }
+      } catch (err) {
+        console.warn('No `subjects` table found in Supabase yet — using default subject list.');
+      }
+
+      try {
         const { data: quizData } = await window.db
           .from('quizzes')
           .select('*, quiz_questions(*)')
@@ -735,6 +781,8 @@
     logout,
     addLecture,
     deleteLecture,
+    addSubject,
+    deleteSubject,
     addMessage,
     togglePinMessage,
     deleteMessage,

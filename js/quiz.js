@@ -18,7 +18,7 @@
   let parsedUpload = null;
 
   // ---- ephemeral hub search state ----
-  const filter = { q: '' };
+  const filter = { q: '', subject: 'all' };
 
   const OPTION_LETTERS = ['A', 'B', 'C', 'D'];
 
@@ -165,12 +165,18 @@
   /** Matches the Quiz Hub search box against a quiz's title and subject —
    *  so typing "anatomy" finds every quiz tagged with that subject. */
   function applyQuizFilter(list) {
-    if (!filter.q) return list;
-    const q = filter.q.toLowerCase();
-    return list.filter(qz =>
-      (qz.title || '').toLowerCase().includes(q) ||
-      (qz.subject || '').toLowerCase().includes(q)
-    );
+    let out = list;
+    if (filter.subject && filter.subject !== 'all') {
+      out = out.filter(qz => (qz.subject || '').toLowerCase() === filter.subject.toLowerCase());
+    }
+    if (filter.q) {
+      const q = filter.q.toLowerCase();
+      out = out.filter(qz =>
+        (qz.title || '').toLowerCase().includes(q) ||
+        (qz.subject || '').toLowerCase().includes(q)
+      );
+    }
+    return out;
   }
 
   /* ---------------------------------------------------------
@@ -236,12 +242,22 @@
         </div>
 
         <!-- Search -->
-        <div class="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
-          <label class="block flex-1">
-            <span class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">Search</span>
-            <input id="quiz-search" value="${UI.ESC ? UI.ESC(filter.q) : filter.q}" placeholder="title or subject (e.g. Anatomy)…" class="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-sm" />
+        <div class="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-[220px_1fr_auto] gap-3 items-end">
+          <label class="block">
+            <span class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center justify-between">
+              <span>Subject</span>
+              ${user && user.isAdmin ? `<button type="button" id="manage-subjects-btn" class="normal-case text-[11px] font-semibold text-brand-600 hover:underline">Manage</button>` : ''}
+            </span>
+            <select id="quiz-subject-filter" class="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-sm">
+              ${['all', ...(st.subjects || [])].map(s =>
+                `<option value="${UI.ESC ? UI.ESC(s) : s}" ${filter.subject === s ? 'selected' : ''}>${s === 'all' ? 'All subjects' : (UI.ESC ? UI.ESC(s) : s)}</option>`).join('')}
+            </select>
           </label>
-          <div class="text-xs text-slate-500 dark:text-slate-400 shrink-0 self-end pb-1.5">${quizzes.length} of ${allQuizzes.length}</div>
+          <label class="block">
+            <span class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">Search</span>
+            <input id="quiz-search" value="${UI.ESC ? UI.ESC(filter.q) : filter.q}" placeholder="title (e.g. Practice Quiz)…" class="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-sm" />
+          </label>
+          <div class="text-xs text-slate-500 dark:text-slate-400 shrink-0 pb-1.5">${quizzes.length} of ${allQuizzes.length}</div>
         </div>
 
         ${quizzes.length === 0 ? `
@@ -298,6 +314,12 @@
         render();
       }, 150));
     }
+
+    const subjectFilter = el('quiz-subject-filter');
+    if (subjectFilter) subjectFilter.addEventListener('change', e => { filter.subject = e.target.value; render(); });
+
+    const manageBtn = el('manage-subjects-btn');
+    if (manageBtn) manageBtn.addEventListener('click', () => getMODALS().openSubjectManager());
 
     document.querySelectorAll('.btn-start-quiz').forEach(b => {
       b.addEventListener('click', () => startQuiz(b.dataset.quizId));
@@ -423,7 +445,10 @@
               </div>
               <div>
                 <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">Subject (optional)</label>
-                <input type="text" id="quiz-subject-input" placeholder="e.g. Anatomy" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-success-500" />
+                <select id="quiz-subject-input" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-success-500">
+                  <option value="">— None —</option>
+                  ${(getSTATE().state.subjects || []).map(s => `<option value="${s}">${s}</option>`).join('')}
+                </select>
               </div>
             </div>
 
