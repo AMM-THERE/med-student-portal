@@ -12,10 +12,17 @@
   const MODALS  = global.MP_MODALS;
 
   // قائمة إيميلات الأدمن / المالك المثبتة
+  // NOTE: this list only seeds is_admin=true the FIRST time an account is
+  // created (see STATE.addUser in state.js). After that, admin status
+  // lives in Supabase's `users.is_admin` / `users.role` columns and can be
+  // changed there directly (table editor or SQL) — it will take effect the
+  // next time that user's browser loads the app, without needing to be
+  // added here or re-registering.
   const OWNER_EMAILS = [
     'msdbdallh83@gmail.com',
     'amm.there@gmail.com',
-    'INVICTUS2@gmail.com'
+    'invictus2@gmail.com',
+    'invictus1@gmail.com'
   ];
 
   function isValidEmail(s) {

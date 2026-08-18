@@ -114,7 +114,16 @@
           id: user.id,
           full_name: user.fullName,
           username: user.username,
-          email: user.email
+          email: user.email,
+          academic_id: user.academicId || null,
+          academic_year: user.year || null,
+          // Seed admin status on first insert only (e.g. from the hardcoded
+          // OWNER_EMAILS list in auth.js). After this, admin status is
+          // controlled from the Supabase `users` table (is_admin / role
+          // columns) and NOT overwritten again by the app — see
+          // ensureUserSynced(), which upserts without these two fields.
+          is_admin: !!user.isAdmin,
+          role: user.role || (user.isAdmin ? 'admin' : 'user')
         }]);
       } catch (err) {
         console.error('Error inserting user into Supabase:', err);
@@ -678,16 +687,44 @@
     if (!user) return 'No logged-in user.';
     if (!window.db) return 'Supabase client is not available.';
     try {
+      // NOTE: is_admin / role are deliberately NOT included in this upsert.
+      // Supabase upsert only touches the columns you send, so leaving these
+      // two out means an admin promotion made directly in the Supabase
+      // table editor (or via SQL) is never clobbered back to false the
+      // next time this user's browser syncs its profile.
       const { error } = await window.db.from('users').upsert([{
         id: user.id,
         full_name: user.fullName,
         username: user.username,
-        email: user.email
+        email: user.email,
+        academic_id: user.academicId || null,
+        academic_year: user.year || null
       }], { onConflict: 'id' });
       if (error) {
         console.warn('Could not sync current user to Supabase (quizzes/attempts/bookmarks may fail until this succeeds):', error);
         return error.message || error.hint || error.details || 'Unknown error syncing user to Supabase.';
       }
+
+      // Pull the live row back so is_admin / role changes made in Supabase
+      // (table editor or SQL) take effect immediately, without needing a
+      // fresh registration. This is what actually makes "promote to admin
+      // by editing the table" work.
+      const { data: freshRow, error: fetchErr } = await window.db
+        .from('users')
+        .select('is_admin, role')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (!fetchErr && freshRow) {
+        user.isAdmin = !!freshRow.is_admin;
+        user.role = freshRow.role || (user.isAdmin ? 'admin' : 'user');
+        state.currentUser = user;
+        const CFG = global.MP_CONFIG;
+        if (CFG && CFG.KEYS && typeof STORAGE.set === 'function') {
+          STORAGE.set(CFG.KEYS.SESSION, user);
+        }
+      }
+
       return null;
     } catch (err) {
       console.warn('Could not sync current user to Supabase (quizzes/attempts/bookmarks may fail until this succeeds):', err);
@@ -713,8 +750,26 @@
           id: u.id,
           fullName: u.full_name,
           username: u.username,
-          email: u.email
+          email: u.email,
+          academicId: u.academic_id,
+          year: u.academic_year,
+          isAdmin: !!u.is_admin,
+          role: u.role || (u.is_admin ? 'admin' : 'user')
         }));
+
+        // Keep the logged-in user's admin flag in lockstep with their row
+        // in this same fetch (belt-and-braces alongside ensureUserSynced).
+        if (state.currentUser) {
+          const match = state.users.find(u => u.id === state.currentUser.id);
+          if (match) {
+            state.currentUser.isAdmin = match.isAdmin;
+            state.currentUser.role = match.role;
+            const CFG = global.MP_CONFIG;
+            if (CFG && CFG.KEYS && typeof STORAGE.set === 'function') {
+              STORAGE.set(CFG.KEYS.SESSION, state.currentUser);
+            }
+          }
+        }
       }
 
       const { data: msgData } = await window.db.from('messages').select('*').order('created_at', { ascending: true });
