@@ -580,6 +580,10 @@
 
     await ensureUserSynced(state.currentUser);
 
+    // Whatever happens below (success or thrown error), the UI must
+    // re-render once this load attempt is finished — otherwise the page
+    // can be left showing the empty pre-load state forever (the bug
+    // where lectures/chat/quiz show 0 until you manually click a tab).
     try {
       const { data: usersData } = await window.db.from('users').select('*');
       if (usersData) {
@@ -709,13 +713,14 @@
         }
       }
 
+    } catch (err) {
+      console.error('Error fetching data:', err);
+    } finally {
       notify({ type: 'init' });
       if (global.MP_NAV && typeof global.MP_NAV.renderAll === 'function') {
         global.MP_NAV.renderAll();
       }
       setupRealtime();
-    } catch (err) {
-      console.error('Error fetching data:', err);
     }
   }
 
