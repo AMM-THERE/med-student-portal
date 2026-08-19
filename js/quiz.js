@@ -33,7 +33,8 @@
     C: ['optionc', 'option c', 'c', 'اختيار3', 'اختيار 3', 'الاختيار الثالث', 'اختيار ج'],
     D: ['optiond', 'option d', 'd', 'اختيار4', 'اختيار 4', 'الاختيار الرابع', 'اختيار د'],
     correct: ['correctanswer', 'correct answer', 'answer', 'correct', 'الإجابة الصحيحة', 'الاجابة الصحيحة', 'الإجابة'],
-    explanation: ['explanation', 'why', 'reason', 'الشرح', 'التفسير', 'السبب']
+    explanation: ['explanation', 'why', 'reason', 'الشرح', 'التفسير', 'السبب'],
+    image: ['image', 'image url', 'imageurl', 'picture', 'photo', 'picture url', 'صورة', 'رابط الصورة']
   };
 
   function normalizeHeader(h) {
@@ -92,6 +93,7 @@
           const colD = findColumn(headers, HEADER_CANDIDATES.D);
           const colCorrect = findColumn(headers, HEADER_CANDIDATES.correct);
           const colExplanation = findColumn(headers, HEADER_CANDIDATES.explanation);
+          const colImage = findColumn(headers, HEADER_CANDIDATES.image);
 
           if (colQ === -1 || colA === -1 || colB === -1 || colC === -1 || colD === -1 || colCorrect === -1) {
             resolve({
@@ -118,6 +120,7 @@
               D: String(row[colD] == null ? '' : row[colD]).trim()
             };
             const explanation = colExplanation !== -1 ? String(row[colExplanation] == null ? '' : row[colExplanation]).trim() : '';
+            const image = colImage !== -1 ? String(row[colImage] == null ? '' : row[colImage]).trim() : '';
 
             if (!text || !options.A || !options.B || !options.C || !options.D) {
               errors.push(`Row ${r + 1}: missing question text or one of the 4 options — skipped.`);
@@ -130,7 +133,7 @@
               continue;
             }
 
-            questions.push({ text, options, correct, explanation });
+            questions.push({ text, options, correct, explanation, image });
           }
 
           resolve({ questions, errors });
@@ -432,6 +435,10 @@
               <button class="btn-unsave-current shrink-0 text-xl leading-none" data-qid="${question.id}" title="Remove from saved">🔖</button>
             </div>
 
+            ${question.image ? `
+              <img src="${UI.ESC ? UI.ESC(question.image) : question.image}" alt="Question image" class="w-full max-h-80 object-contain rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800" onerror="this.style.display='none'" />
+            ` : ''}
+
             <div class="space-y-2.5">
               ${OPTION_LETTERS.map(letter => {
                 const optText = question.options[letter];
@@ -559,7 +566,7 @@
             <div>
               <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">Upload Quiz File (.csv, .xlsx, .xls)</label>
               <input type="file" id="quiz-upload-file-input" accept=".csv,.xlsx,.xls" class="w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-success-50 file:text-success-700 hover:file:bg-success-100" />
-              <p class="text-[11px] text-slate-500 mt-1">Expected columns: Question, 4 options, Correct Answer, and an optional Explanation column. English or Arabic headers both work.</p>
+              <p class="text-[11px] text-slate-500 mt-1">Expected columns: Question, 4 options, Correct Answer, and optional Explanation / Image URL columns (not every question needs an image). English or Arabic headers both work.</p>
             </div>
 
             <div id="quiz-preview-area"></div>
@@ -611,7 +618,8 @@
               <td class="py-1.5 pr-2 text-slate-500">${i + 1}</td>
               <td class="py-1.5 pr-2 max-w-[220px] truncate">${UI.ESC ? UI.ESC(q.text) : q.text}</td>
               <td class="py-1.5 pr-2 font-semibold text-emerald-600">${q.correct}) ${UI.ESC ? UI.ESC(q.options[q.correct]) : q.options[q.correct]}</td>
-              <td class="py-1.5 text-slate-500">${q.explanation ? '✓' : '—'}</td>
+              <td class="py-1.5 pr-2 text-slate-500">${q.explanation ? '✓' : '—'}</td>
+              <td class="py-1.5 text-slate-500">${q.image ? '🖼️' : '—'}</td>
             </tr>
           `).join('');
 
@@ -628,7 +636,8 @@
                       <th class="py-1.5 pr-2 font-semibold">#</th>
                       <th class="py-1.5 pr-2 font-semibold">Question</th>
                       <th class="py-1.5 pr-2 font-semibold">Correct</th>
-                      <th class="py-1.5 font-semibold">Explanation?</th>
+                      <th class="py-1.5 pr-2 font-semibold">Explanation?</th>
+                      <th class="py-1.5 font-semibold">Image?</th>
                     </tr>
                   </thead>
                   <tbody>${rowsHtml}</tbody>
@@ -746,6 +755,10 @@
             <h2 class="text-lg font-bold text-slate-900 dark:text-slate-100 leading-snug">${UI.ESC ? UI.ESC(question.text) : question.text}</h2>
             <button id="btn-toggle-save" class="shrink-0 text-xl leading-none" title="Save for later">${saved ? '🔖' : '🏷️'}</button>
           </div>
+
+          ${question.image ? `
+            <img src="${UI.ESC ? UI.ESC(question.image) : question.image}" alt="Question image" class="w-full max-h-80 object-contain rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800" onerror="this.style.display='none'" />
+          ` : ''}
 
           <div class="space-y-2.5">
             ${OPTION_LETTERS.map(letter => {

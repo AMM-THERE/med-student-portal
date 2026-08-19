@@ -400,6 +400,7 @@
       const rows = questions.map((q, i) => ({
         quiz_id: quizRow.id,
         question_text: q.text,
+        image_url: q.image || null,
         option_a: q.options.A,
         option_b: q.options.B,
         option_c: q.options.C,
@@ -433,6 +434,7 @@
           id: qq.id || ('local_' + quizRow.id + '_' + i),
           quizId: quizRow.id,
           text: qq.question_text,
+          image: qq.image_url || null,
           options: { A: qq.option_a, B: qq.option_b, C: qq.option_c, D: qq.option_d },
           correct: qq.correct_option,
           explanation: qq.explanation,
@@ -840,6 +842,7 @@
                 id: qq.id,
                 quizId: qq.quiz_id,
                 text: qq.question_text,
+                image: qq.image_url || null,
                 options: { A: qq.option_a, B: qq.option_b, C: qq.option_c, D: qq.option_d },
                 correct: qq.correct_option,
                 explanation: qq.explanation,
